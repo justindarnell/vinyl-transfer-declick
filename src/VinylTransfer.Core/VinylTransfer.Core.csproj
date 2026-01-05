@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>VinylTransfer.Core</AssemblyName>
+    <RootNamespace>VinylTransfer.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
