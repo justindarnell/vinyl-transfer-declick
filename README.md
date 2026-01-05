@@ -10,6 +10,6 @@ Application to process digitized vinyls to remove pops, clicks, and other noise.
 
 ## Next steps
 
-- Implement DSP pipeline in `VinylTransfer.Core` with auto/manual modes.
 - Wire up UI actions to load WAV files, run processing, and export results.
-- Replace waveform/spectrogram placeholders with rendered views.
+- Integrate the DSP pipeline with UI controls for auto/manual tuning and progress reporting.
+- Replace waveform/spectrogram placeholders with rendered views and analysis overlays.
