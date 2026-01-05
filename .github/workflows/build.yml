@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,3 +25,21 @@ jobs:
 
       - name: Build
         run: dotnet build src/VinylTransfer.DeClick.sln --configuration Release --no-restore
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: dotnet publish src/VinylTransfer.DeClick.sln --configuration Release --no-restore --output publish
+
+      - name: Package release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cd publish
+          zip -r ../vinyl-transfer-declick-${{ github.run_number }}.zip .
+
+      - name: Create release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release-${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: vinyl-transfer-declick-${{ github.run_number }}.zip
