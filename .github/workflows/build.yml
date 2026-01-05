@@ -37,40 +37,18 @@ jobs:
 
       - name: Publish
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: dotnet publish src/VinylTransfer.DeClick.sln --configuration Release --no-restore --runtime ${{ matrix.rid }} --output publish/${{ matrix.rid }}
+        run: dotnet publish src/VinylTransfer.DeClick.sln --configuration Release --no-restore --output publish
 
-      - name: Package release (Unix)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && runner.os != 'Windows'
-        shell: bash
-        run: |
-          cd publish/${{ matrix.rid }}
-          zip -r ../../vinyl-transfer-declick-${{ matrix.rid }}.zip .
-
-      - name: Package release (Windows)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path publish/${{ matrix.rid }}/* -DestinationPath vinyl-transfer-declick-${{ matrix.rid }}.zip
-
-      - name: Upload release artifact
+      - name: Package release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.rid }}
-          path: vinyl-transfer-declick-${{ matrix.rid }}.zip
-
-  release:
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
+        run: |
+          cd publish
+          zip -r ../vinyl-transfer-declick-${{ github.run_number }}.zip .
 
       - name: Create release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: release-${{ github.run_number }}
           name: Release ${{ github.run_number }}
-          files: dist/**/vinyl-transfer-declick-*.zip
+          files: vinyl-transfer-declick-${{ github.run_number }}.zip
