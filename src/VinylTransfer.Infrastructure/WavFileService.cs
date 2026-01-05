@@ -23,14 +23,15 @@ public sealed class WavFileService
         var channels = reader.WaveFormat.Channels;
         var totalSampleCount = (int)(reader.Length / sizeof(float));
         
-        // Validate reasonable file size (e.g., max 2GB of samples = 500M floats)
+        // Validate reasonable file size to prevent excessive memory allocation
+        // 500M floats × 4 bytes/float = 2GB of float sample data
         const int maxSamples = 500_000_000;
         if (totalSampleCount > maxSamples)
         {
             throw new InvalidOperationException($"WAV file is too large. Maximum supported size is {maxSamples} samples.");
         }
         
-        var samples = new float[Math.Max(totalSampleCount, 0)];
+        var samples = new float[totalSampleCount];
         var totalRead = 0;
 
         while (totalRead < samples.Length)
