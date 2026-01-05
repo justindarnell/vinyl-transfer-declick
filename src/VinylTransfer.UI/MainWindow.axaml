@@ -9,7 +9,7 @@
         Height="720">
   <Grid ColumnDefinitions="320,*" RowDefinitions="Auto,*,Auto" Margin="16">
     <TextBlock Grid.ColumnSpan="2" FontSize="22" FontWeight="SemiBold"
-               Text="Vinyl Transfer Cleanup" />
+               Text="Vinyl Transfer DeClick" />
 
     <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
       <StackPanel Spacing="12">

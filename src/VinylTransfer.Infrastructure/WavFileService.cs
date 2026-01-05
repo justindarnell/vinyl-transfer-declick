@@ -10,7 +10,7 @@ public sealed class WavFileService
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("Path must be provided.", nameof(path));
+            throw new ArgumentException("WAV file path must be provided.", nameof(path));
         }
 
         if (!File.Exists(path))
@@ -22,6 +22,14 @@ public sealed class WavFileService
         var sampleRate = reader.WaveFormat.SampleRate;
         var channels = reader.WaveFormat.Channels;
         var totalSampleCount = (int)(reader.Length / sizeof(float));
+        
+        // Validate reasonable file size (e.g., max 2GB of samples = 500M floats)
+        const int maxSamples = 500_000_000;
+        if (totalSampleCount > maxSamples)
+        {
+            throw new InvalidOperationException($"WAV file is too large. Maximum supported size is {maxSamples} samples.");
+        }
+        
         var samples = new float[Math.Max(totalSampleCount, 0)];
         var totalRead = 0;
 
@@ -48,27 +56,12 @@ public sealed class WavFileService
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new ArgumentException("Path must be provided.", nameof(path));
+            throw new ArgumentException("WAV file path must be provided.", nameof(path));
         }
 
         if (buffer is null)
         {
             throw new ArgumentNullException(nameof(buffer));
-        }
-
-        if (buffer.Samples is null || buffer.Samples.Length == 0)
-        {
-            throw new ArgumentException("Audio buffer samples must be provided.", nameof(buffer));
-        }
-
-        if (buffer.SampleRate <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(buffer), "Sample rate must be greater than zero.");
-        }
-
-        if (buffer.Channels <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(buffer), "Channel count must be greater than zero.");
         }
 
         var format = WaveFormat.CreateIeeeFloatWaveFormat(buffer.SampleRate, buffer.Channels);
