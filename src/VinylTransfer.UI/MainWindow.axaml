@@ -1,0 +1,57 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="VinylTransfer.UI.MainWindow"
+        Title="Vinyl Transfer DeClick"
+        Width="1200"
+        Height="720">
+  <Grid ColumnDefinitions="320,*" RowDefinitions="Auto,*,Auto" Margin="16">
+    <TextBlock Grid.ColumnSpan="2" FontSize="22" FontWeight="SemiBold"
+               Text="Vinyl Transfer Cleanup" />
+
+    <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
+      <StackPanel Spacing="12">
+        <Button Content="Import WAV" />
+        <Button Content="Auto Clean" />
+        <Button Content="A/B Preview" />
+        <Button Content="Export Processed WAV" />
+        <Button Content="Export Difference WAV" />
+
+        <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
+
+        <TextBlock Text="Click Threshold" />
+        <Slider Minimum="0" Maximum="1" Value="0.4" />
+        <TextBlock Text="Click Intensity" />
+        <Slider Minimum="0" Maximum="1" Value="0.6" />
+
+        <TextBlock Text="Pop Threshold" />
+        <Slider Minimum="0" Maximum="1" Value="0.35" />
+        <TextBlock Text="Pop Intensity" />
+        <Slider Minimum="0" Maximum="1" Value="0.5" />
+
+        <TextBlock Text="Noise Floor" />
+        <Slider Minimum="-90" Maximum="-20" Value="-60" />
+        <TextBlock Text="Noise Reduction" />
+        <Slider Minimum="0" Maximum="1" Value="0.5" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*" Margin="0,16,0,0">
+      <TextBlock Text="Waveform" FontWeight="SemiBold" />
+      <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8">
+        <TextBlock Text="Waveform view placeholder" Foreground="Gray" />
+      </Border>
+
+      <TextBlock Grid.Row="2" Text="Spectrogram" FontWeight="SemiBold" Margin="0,16,0,0" />
+      <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,8,0,0">
+        <TextBlock Text="Spectrogram view placeholder" Foreground="Gray" />
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,16,0,0">
+      <TextBlock Text="{Binding StatusMessage}" />
+    </Border>
+  </Grid>
+</Window>
