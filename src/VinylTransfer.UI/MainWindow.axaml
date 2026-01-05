@@ -13,28 +13,42 @@
 
     <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
       <StackPanel Spacing="12">
-        <Button Content="Import WAV" />
-        <Button Content="Auto Clean" />
-        <Button Content="A/B Preview" />
-        <Button Content="Export Processed WAV" />
-        <Button Content="Export Difference WAV" />
+        <Button Content="Import WAV" Command="{Binding ImportWavCommand}" IsEnabled="{Binding CanInteract}" />
+        <Button Content="Run Cleanup" Command="{Binding RunProcessingCommand}" />
+        <Button Content="A/B Preview" Command="{Binding PreviewCommand}" />
+        <Button Content="Export Processed WAV" Command="{Binding ExportProcessedCommand}" />
+        <Button Content="Export Difference WAV" Command="{Binding ExportDifferenceCommand}" />
+
+        <TextBlock FontWeight="SemiBold" Text="Mode" Margin="0,8,0,0" />
+        <ToggleSwitch Content="Auto Tuning" IsChecked="{Binding UseAutoMode}" />
+
+        <TextBlock FontWeight="SemiBold" Text="Auto Tuning" Margin="0,8,0,0" />
+        <StackPanel Spacing="6" IsEnabled="{Binding UseAutoMode}">
+          <TextBlock Text="Click Sensitivity" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding AutoClickSensitivity}" />
+          <TextBlock Text="Pop Sensitivity" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding AutoPopSensitivity}" />
+          <TextBlock Text="Noise Reduction" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding AutoNoiseReduction}" />
+        </StackPanel>
 
         <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
+        <StackPanel Spacing="6" IsEnabled="{Binding IsManualMode}">
+          <TextBlock Text="Click Threshold" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding ManualClickThreshold}" />
+          <TextBlock Text="Click Intensity" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding ManualClickIntensity}" />
 
-        <TextBlock Text="Click Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="0.4" />
-        <TextBlock Text="Click Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="0.6" />
+          <TextBlock Text="Pop Threshold" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding ManualPopThreshold}" />
+          <TextBlock Text="Pop Intensity" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding ManualPopIntensity}" />
 
-        <TextBlock Text="Pop Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="0.35" />
-        <TextBlock Text="Pop Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="0.5" />
-
-        <TextBlock Text="Noise Floor" />
-        <Slider Minimum="-90" Maximum="-20" Value="-60" />
-        <TextBlock Text="Noise Reduction" />
-        <Slider Minimum="0" Maximum="1" Value="0.5" />
+          <TextBlock Text="Noise Floor (Linear)" />
+          <Slider Minimum="0" Maximum="0.1" Value="{Binding ManualNoiseFloor}" />
+          <TextBlock Text="Noise Reduction" />
+          <Slider Minimum="0" Maximum="1" Value="{Binding ManualNoiseReduction}" />
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
 
@@ -51,7 +65,11 @@
     </Grid>
 
     <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,16,0,0">
-      <TextBlock Text="{Binding StatusMessage}" />
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding StatusMessage}" />
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsProcessing}" />
+        <TextBlock Text="{Binding ProgressStage}" Foreground="Gray" IsVisible="{Binding IsProcessing}" />
+      </StackPanel>
     </Border>
   </Grid>
 </Window>

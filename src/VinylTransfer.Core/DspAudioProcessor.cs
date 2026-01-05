@@ -1,10 +1,14 @@
 using System.Diagnostics;
+using System.Threading;
 
 namespace VinylTransfer.Core;
 
 public sealed class DspAudioProcessor : IAudioProcessor
 {
-    public ProcessingResult Process(ProcessingRequest request)
+    public ProcessingResult Process(
+        ProcessingRequest request,
+        IProgress<ProcessingProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         if (request is null)
         {
@@ -28,7 +32,16 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var processedSamples = new float[samples.Length];
         samples.CopyTo(processedSamples, 0);
 
-        var diagnostics = ApplyProcessing(processedSamples, input, settings, out var clicksDetected, out var popsDetected, out var noiseFloor);
+        progress?.Report(new ProcessingProgress(0.0, "Initializing DSP pipeline"));
+        var diagnostics = ApplyProcessing(
+            processedSamples,
+            input,
+            settings,
+            progress,
+            cancellationToken,
+            out var clicksDetected,
+            out var popsDetected,
+            out var noiseFloor);
 
         var difference = new float[samples.Length];
         for (var i = 0; i < samples.Length; i++)
@@ -42,6 +55,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var diffBuffer = new AudioBuffer(difference, input.SampleRate, input.Channels);
         var resultDiagnostics = new ProcessingDiagnostics(stopwatch.Elapsed, clicksDetected, popsDetected, noiseFloor);
 
+        progress?.Report(new ProcessingProgress(1.0, "Processing complete"));
         return new ProcessingResult(processed, diffBuffer, resultDiagnostics);
     }
 
@@ -49,11 +63,17 @@ public sealed class DspAudioProcessor : IAudioProcessor
         float[] samples,
         AudioBuffer input,
         ProcessingSettings settings,
+        IProgress<ProcessingProgress>? progress,
+        CancellationToken cancellationToken,
         out int clicksDetected,
         out int popsDetected,
         out float noiseFloor)
     {
-        noiseFloor = EstimateNoiseFloor(samples);
+        cancellationToken.ThrowIfCancellationRequested();
+        noiseFloor = settings.UseAutoMode
+            ? EstimateNoiseFloor(samples)
+            : Math.Max(settings.ManualMode.NoiseFloor, 0f);
+        progress?.Report(new ProcessingProgress(0.1, settings.UseAutoMode ? "Estimated noise floor" : "Applied manual noise floor"));
 
         var clickThreshold = settings.UseAutoMode
             ? noiseFloor * (1f + settings.AutoMode.ClickSensitivity * 8f)
@@ -69,14 +89,18 @@ public sealed class DspAudioProcessor : IAudioProcessor
         if (reductionAmount > 0f)
         {
             ApplyNoiseReduction(samples, reductionAmount, noiseFloor);
+            progress?.Report(new ProcessingProgress(0.2, "Applied noise reduction"));
         }
 
         clicksDetected = 0;
         popsDetected = 0;
 
         var channels = input.Channels;
-        for (var frame = 0; frame < input.FrameCount; frame++)
+        var frameCount = input.FrameCount;
+        var progressInterval = Math.Max(1, frameCount / 60);
+        for (var frame = 0; frame < frameCount; frame++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             for (var channel = 0; channel < channels; channel++)
             {
                 var index = frame * channels + channel;
@@ -94,8 +118,15 @@ public sealed class DspAudioProcessor : IAudioProcessor
                     samples[index] = BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, clickIntensity);
                 }
             }
+
+            if (frame % progressInterval == 0 || frame == frameCount - 1)
+            {
+                var percent = 0.2 + (0.75 * (frame / (double)Math.Max(1, frameCount - 1)));
+                progress?.Report(new ProcessingProgress(percent, "Scanning for clicks/pops"));
+            }
         }
 
+        progress?.Report(new ProcessingProgress(0.95, "Finalizing output buffers"));
         return noiseFloor;
     }
 
