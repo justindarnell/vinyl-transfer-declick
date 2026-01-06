@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using System.Runtime.InteropServices;
 using VinylTransfer.Core;
 
 namespace VinylTransfer.UI.Controls;
@@ -132,56 +133,52 @@ public sealed class SpectrogramView : Control
 
         using var framebuffer = bitmap.Lock();
         var stride = framebuffer.RowBytes;
-        unsafe
+        var pixelBuffer = new byte[stride * height];
+        for (var y = 0; y < height; y++)
         {
-            var pointer = (byte*)framebuffer.Address;
+            var rowOffset = y * stride;
+            for (var x = 0; x < width; x++)
+            {
+                pixelBuffer[rowOffset + (x * 4) + 3] = 255;
+            }
+        }
+
+        var maxMagnitude = 1e-6f;
+        var magnitudes = new float[width, height];
+        for (var x = 0; x < width; x++)
+        {
+            var frameIndex = startFrame + (int)Math.Round((x / (double)width) * Math.Max(1, visibleFrames - 1));
+            var sampleStart = Math.Clamp(frameIndex - fftSize / 2, 0, mono.Length - fftSize);
+            var spectrum = ComputeSpectrum(mono, sampleStart, fftSize, window);
+
             for (var y = 0; y < height; y++)
             {
-                var row = pointer + y * stride;
-                for (var x = 0; x < width; x++)
+                var bin = (int)Math.Round((1 - (y / (double)(height - 1))) * (spectrum.Length - 1));
+                var magnitude = spectrum[bin];
+                magnitudes[x, y] = magnitude;
+                if (magnitude > maxMagnitude)
                 {
-                    row[x * 4] = 0;
-                    row[x * 4 + 1] = 0;
-                    row[x * 4 + 2] = 0;
-                    row[x * 4 + 3] = 255;
-                }
-            }
-
-            var maxMagnitude = 1e-6f;
-            var magnitudes = new float[width, height];
-            for (var x = 0; x < width; x++)
-            {
-                var frameIndex = startFrame + (int)Math.Round((x / (double)width) * Math.Max(1, visibleFrames - 1));
-                var sampleStart = Math.Clamp(frameIndex - fftSize / 2, 0, mono.Length - fftSize);
-                var spectrum = ComputeSpectrum(mono, sampleStart, fftSize, window);
-
-                for (var y = 0; y < height; y++)
-                {
-                    var bin = (int)Math.Round((1 - (y / (double)(height - 1))) * (spectrum.Length - 1));
-                    var magnitude = spectrum[bin];
-                    magnitudes[x, y] = magnitude;
-                    if (magnitude > maxMagnitude)
-                    {
-                        maxMagnitude = magnitude;
-                    }
-                }
-            }
-
-            for (var x = 0; x < width; x++)
-            {
-                for (var y = 0; y < height; y++)
-                {
-                    var magnitude = magnitudes[x, y];
-                    var intensity = (float)Math.Log10(1 + (9 * magnitude / maxMagnitude));
-                    var color = (byte)Math.Clamp(intensity * 255f, 0f, 255f);
-                    var row = pointer + y * stride;
-                    row[x * 4] = color;
-                    row[x * 4 + 1] = (byte)Math.Clamp(color * 0.8f, 0f, 255f);
-                    row[x * 4 + 2] = (byte)Math.Clamp(color * 0.6f, 0f, 255f);
-                    row[x * 4 + 3] = 255;
+                    maxMagnitude = magnitude;
                 }
             }
         }
+
+        for (var x = 0; x < width; x++)
+        {
+            for (var y = 0; y < height; y++)
+            {
+                var magnitude = magnitudes[x, y];
+                var intensity = (float)Math.Log10(1 + (9 * magnitude / maxMagnitude));
+                var color = (byte)Math.Clamp(intensity * 255f, 0f, 255f);
+                var rowOffset = y * stride;
+                pixelBuffer[rowOffset + (x * 4)] = color;
+                pixelBuffer[rowOffset + (x * 4) + 1] = (byte)Math.Clamp(color * 0.8f, 0f, 255f);
+                pixelBuffer[rowOffset + (x * 4) + 2] = (byte)Math.Clamp(color * 0.6f, 0f, 255f);
+                pixelBuffer[rowOffset + (x * 4) + 3] = 255;
+            }
+        }
+
+        Marshal.Copy(pixelBuffer, 0, framebuffer.Address, pixelBuffer.Length);
 
         return bitmap;
     }
