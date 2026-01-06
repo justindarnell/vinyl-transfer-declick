@@ -56,7 +56,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         out int popsDetected,
         out float noiseFloor)
     {
-        var estimatedNoiseFloor = EstimateNoiseFloor(samples);
+        var estimatedNoiseFloor = EstimateNoiseFloor(input);
         noiseFloor = settings.UseAutoMode ? estimatedNoiseFloor : settings.ManualMode.NoiseFloor;
 
         var clickThreshold = settings.UseAutoMode
@@ -75,14 +75,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
             var useSpectralNoiseReduction = settings.UseAutoMode
                 ? settings.AutoMode.UseSpectralNoiseReduction
                 : settings.ManualMode.UseSpectralNoiseReduction;
-            if (useSpectralNoiseReduction)
-            {
-                ApplySpectralNoiseReduction(samples, input.SampleRate, input.Channels, reductionAmount);
-            }
-            else
-            {
-                ApplyNoiseReduction(samples, reductionAmount, noiseFloor);
-            }
+            ApplySpectralNoiseReduction(
+                samples,
+                input.SampleRate,
+                input.Channels,
+                reductionAmount,
+                useGentleFlooring: !useSpectralNoiseReduction);
         }
 
         var useMedianRepair = settings.UseAutoMode
@@ -136,40 +134,53 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return estimatedNoiseFloor;
     }
 
-    private static float EstimateNoiseFloor(float[] samples)
+    private static float EstimateNoiseFloor(AudioBuffer buffer)
     {
+        if (buffer is null)
+        {
+            throw new ArgumentNullException(nameof(buffer));
+        }
+
+        var samples = buffer.Samples;
         if (samples.Length == 0)
         {
             return 0f;
         }
 
-        double total = 0;
-        for (var i = 0; i < samples.Length; i++)
+        var frames = buffer.FrameCount;
+        var channels = buffer.Channels;
+        var segmentFrames = Math.Max(buffer.SampleRate * 2, 1);
+        var segmentCount = (frames + segmentFrames - 1) / segmentFrames;
+        if (segmentCount <= 0)
         {
-            total += Math.Abs(samples[i]);
+            return 0f;
         }
 
-        var mean = total / samples.Length;
-        return (float)mean;
-    }
+        var segmentRms = new List<float>(segmentCount);
 
-    private static void ApplyNoiseReduction(float[] samples, float reductionAmount, float noiseFloor)
-    {
-        var reduction = Math.Clamp(reductionAmount, 0f, 1f);
-        if (reduction <= 0f)
+        for (var segment = 0; segment < segmentCount; segment++)
         {
-            return;
-        }
+            var startFrame = segment * segmentFrames;
+            var endFrame = Math.Min(frames, startFrame + segmentFrames);
+            double sumSq = 0;
+            var totalSamples = 0;
 
-        for (var i = 0; i < samples.Length; i++)
-        {
-            var sample = samples[i];
-            var abs = MathF.Abs(sample);
-            if (abs < noiseFloor)
+            for (var frame = startFrame; frame < endFrame; frame++)
             {
-                samples[i] = sample * (1f - reduction);
+                for (var channel = 0; channel < channels; channel++)
+                {
+                    var sample = samples[frame * channels + channel];
+                    sumSq += sample * sample;
+                    totalSamples++;
+                }
             }
+
+            var rms = totalSamples > 0 ? (float)Math.Sqrt(sumSq / totalSamples) : 0f;
+            segmentRms.Add(rms);
         }
+
+        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
+        return quietSegments.Length == 0 ? 0f : quietSegments.Average();
     }
 
     private static float BlendWithNeighbors(float[] samples, int frame, int channel, int channels, int frameCount, int window, float intensity)
@@ -254,7 +265,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
             : values[mid];
     }
 
-    private static void ApplySpectralNoiseReduction(float[] samples, int sampleRate, int channels, float reductionAmount)
+    private static void ApplySpectralNoiseReduction(
+        float[] samples,
+        int sampleRate,
+        int channels,
+        float reductionAmount,
+        bool useGentleFlooring)
     {
         // Make frame size adaptive based on sample rate to maintain consistent time resolution.
         // Target ~23ms window (1024 samples at 44.1kHz).
@@ -278,9 +294,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             return;
         }
 
+        var effectiveReduction = useGentleFlooring ? reduction * 0.6f : reduction;
         for (var channel = 0; channel < channels; channel++)
         {
-            ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, reduction);
+            ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, effectiveReduction);
         }
     }
 
@@ -350,6 +367,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             var noiseProfile = EstimateNoiseProfile(spectra, frameRms);
 
             // Synthesis: apply noise reduction, inverse FFT, and overlap-add.
+            var previousGain = new float[frameSize];
+            Array.Fill(previousGain, 1f);
+            const float TemporalSmoothing = 0.85f;
+            var minGain = 1f - (0.6f * reductionAmount);
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var spectrum = spectra[frame];
@@ -357,10 +378,18 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 {
                     var magnitude = spectrum[i].Magnitude;
                     var noise = noiseProfile[i];
-                    var reduced = Math.Max(0, magnitude - noise * reductionAmount);
-                    if (magnitude > 0)
+                    if (magnitude <= 0f)
                     {
-                        spectrum[i] *= reduced / magnitude;
+                        continue;
+                    }
+
+                    var reduced = Math.Max(magnitude - noise * reductionAmount, magnitude * minGain);
+                    var targetGain = reduced / magnitude;
+                    var smoothedGain = (TemporalSmoothing * previousGain[i]) + ((1f - TemporalSmoothing) * targetGain);
+                    previousGain[i] = smoothedGain;
+                    if (smoothedGain > 0f)
+                    {
+                        spectrum[i] *= smoothedGain;
                     }
                 }
 
@@ -438,8 +467,16 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
     private static bool[] DetectTransientFrames(float[] samples, int sampleRate, int channels)
     {
-        var frameSize = 1024;
-        var hopSize = 512;
+        var targetTimeMs = 23.0;
+        var targetFrameSize = (int)(sampleRate * targetTimeMs / 1000.0);
+        var frameSize = 1;
+        while (frameSize < targetFrameSize)
+        {
+            frameSize <<= 1;
+        }
+
+        frameSize = Math.Clamp(frameSize, 512, 4096);
+        var hopSize = frameSize / 2;
         var totalFrames = samples.Length / channels;
         var frameCount = (totalFrames - frameSize) / hopSize + 1;
         if (frameCount <= 0)

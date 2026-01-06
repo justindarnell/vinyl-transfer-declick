@@ -34,6 +34,27 @@ Application to process digitized vinyls to remove pops, clicks, and other noise.
 - Add batch processing and presets for common vinyl cleanup scenarios.
 - Add automated tests for DSP correctness and regression coverage.
 
+## Targeted upgrade plan (quality priorities)
+
+### Phase 1 — Stabilize noise modeling and reduce artifacts
+
+- Unify noise-floor estimation between analysis and processing using segment-based percentiles to avoid inconsistent auto-mode behavior.
+- Replace time-domain gating with a gentle spectral floor in the FFT path to prevent pumping in quiet passages.
+- Add temporal smoothing to spectral attenuation to reduce musical-noise artifacts.
+- Make transient detection window size adaptive to sample rate to preserve timing consistency.
+
+### Phase 2 — Improve click/pop fidelity
+
+- Introduce multi-sample impulse validation (short-window energy + HF emphasis) before declaring a click/pop.
+- Add band-limited interpolation repair (or AR/wavelet-based inpainting) for cleaner transient reconstruction.
+- Add a dedicated decrackle pass tuned for dense micro-impulses before click/pop repair.
+
+### Phase 3 — Listening workflow and validation
+
+- Add objective regression metrics (SNR improvement, residual click count, delta RMS) with curated test vectors.
+- Expose detected events and noise profile overlays in the waveform view for targeted review.
+- Add presets for common vinyl profiles and A/B auditioning for rapid tuning.
+
 ## Additional context for the next engineer
 
 - The UI is Avalonia + ReactiveUI. Commands and interactions live in `MainWindowViewModel`.
