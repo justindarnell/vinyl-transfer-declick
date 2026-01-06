@@ -66,7 +66,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
             out var popsDetected,
             out var decracklesDetected,
             out var noiseFloor,
-            out var detectedEvents);
+            out var detectedEvents,
+            out var transientThresholdSummary);
 
         var difference = new float[samples.Length];
         for (var i = 0; i < samples.Length; i++)
@@ -89,7 +90,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
             residualClicks,
             noiseFloor,
             processingGainDb,
-            deltaRms);
+            deltaRms,
+            transientThresholdSummary);
         var artifacts = new ProcessingArtifacts(detectedEvents, AudioAnalysis.BuildNoiseProfile(input));
 
         return new ProcessingResult(processed, diffBuffer, resultDiagnostics, artifacts);
@@ -103,7 +105,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         out int popsDetected,
         out int decracklesDetected,
         out float noiseFloor,
-        out List<DetectedEvent> detectedEvents)
+        out List<DetectedEvent> detectedEvents,
+        out string transientThresholdSummary)
     {
         var estimatedNoiseFloor = EstimateNoiseFloor(input);
         noiseFloor = settings.UseAutoMode ? estimatedNoiseFloor : settings.ManualMode.NoiseFloor;
@@ -150,8 +153,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
             : settings.ManualMode.UseMultiBandTransientDetection;
 
         var transientFrames = useMultiBandTransientDetection
-            ? DetectTransientFrames(samples, input.SampleRate, input.Channels)
+            ? DetectTransientFrames(samples, input.SampleRate, input.Channels, out transientThresholdSummary)
             : Array.Empty<bool>();
+        if (!useMultiBandTransientDetection)
+        {
+            transientThresholdSummary = string.Empty;
+        }
 
         clicksDetected = 0;
         popsDetected = 0;
@@ -719,7 +726,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return window;
     }
 
-    private static bool[] DetectTransientFrames(float[] samples, int sampleRate, int channels)
+    private static bool[] DetectTransientFrames(float[] samples, int sampleRate, int channels, out string transientThresholdSummary)
     {
         var targetFrameSize = (int)(sampleRate * AdaptiveWindowTargetMs / 1000.0);
         var frameSize = 1;
@@ -734,6 +741,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var frameCount = (totalFrames - frameSize) / hopSize + 1;
         if (frameCount <= 0)
         {
+            transientThresholdSummary = string.Empty;
             return Array.Empty<bool>();
         }
 
@@ -787,18 +795,52 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
         }
 
-        var lowMedian = Median(lowBand);
-        var midMedian = Median(midBand);
-        var highMedian = Median(highBand);
-
         var flags = new bool[frameCount];
-        for (var frame = 0; frame < frameCount; frame++)
+        var framesPerSegment = Math.Max((sampleRate * 2) / hopSize, 1);
+        var segmentCount = (frameCount + framesPerSegment - 1) / framesPerSegment;
+        var lowThresholds = new float[segmentCount];
+        var midThresholds = new float[segmentCount];
+        var highThresholds = new float[segmentCount];
+
+        for (var segment = 0; segment < segmentCount; segment++)
         {
-            var isTransient = lowBand[frame] > lowMedian * 5f ||
-                              midBand[frame] > midMedian * 5f ||
-                              highBand[frame] > highMedian * 6f;
-            flags[frame] = isTransient;
+            var startFrame = segment * framesPerSegment;
+            var endFrame = Math.Min(frameCount, startFrame + framesPerSegment);
+            var frameSpan = endFrame - startFrame;
+            if (frameSpan <= 0)
+            {
+                continue;
+            }
+
+            var lowSlice = new float[frameSpan];
+            var midSlice = new float[frameSpan];
+            var highSlice = new float[frameSpan];
+            for (var i = 0; i < frameSpan; i++)
+            {
+                var frameIndex = startFrame + i;
+                lowSlice[i] = lowBand[frameIndex];
+                midSlice[i] = midBand[frameIndex];
+                highSlice[i] = highBand[frameIndex];
+            }
+
+            lowThresholds[segment] = Percentile(lowSlice, 0.95f);
+            midThresholds[segment] = Percentile(midSlice, 0.95f);
+            highThresholds[segment] = Percentile(highSlice, 0.95f);
+
+            for (var frame = startFrame; frame < endFrame; frame++)
+            {
+                var isTransient = lowBand[frame] > lowThresholds[segment] ||
+                                  midBand[frame] > midThresholds[segment] ||
+                                  highBand[frame] > highThresholds[segment];
+                flags[frame] = isTransient;
+            }
         }
+
+        transientThresholdSummary = BuildTransientThresholdSummary(
+            framesPerSegment,
+            lowThresholds,
+            midThresholds,
+            highThresholds);
 
         var expanded = new bool[frameCount];
         for (var frame = 0; frame < frameCount; frame++)
@@ -855,6 +897,73 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return ordered.Length % 2 == 0
             ? (ordered[mid - 1] + ordered[mid]) / 2f
             : ordered[mid];
+    }
+
+    private static float Percentile(IReadOnlyList<float> values, float percentile)
+    {
+        if (values.Count == 0)
+        {
+            return 0f;
+        }
+
+        var clampedPercentile = Math.Clamp(percentile, 0f, 1f);
+        var ordered = values.OrderBy(x => x).ToArray();
+        var position = clampedPercentile * (ordered.Length - 1);
+        var lowerIndex = (int)MathF.Floor(position);
+        var upperIndex = (int)MathF.Ceiling(position);
+        if (lowerIndex == upperIndex)
+        {
+            return ordered[lowerIndex];
+        }
+
+        var weight = position - lowerIndex;
+        return ordered[lowerIndex] * (1f - weight) + ordered[upperIndex] * weight;
+    }
+
+    private static string BuildTransientThresholdSummary(
+        int framesPerSegment,
+        IReadOnlyList<float> lowThresholds,
+        IReadOnlyList<float> midThresholds,
+        IReadOnlyList<float> highThresholds)
+    {
+        if (lowThresholds.Count == 0 || midThresholds.Count == 0 || highThresholds.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var lowStats = DescribeThresholds(lowThresholds);
+        var midStats = DescribeThresholds(midThresholds);
+        var highStats = DescribeThresholds(highThresholds);
+
+        return $"Transient thresholds (95th percentile, segmentFrames={framesPerSegment}): " +
+               $"low[min={lowStats.Min:0.###}, avg={lowStats.Avg:0.###}, max={lowStats.Max:0.###}], " +
+               $"mid[min={midStats.Min:0.###}, avg={midStats.Avg:0.###}, max={midStats.Max:0.###}], " +
+               $"high[min={highStats.Min:0.###}, avg={highStats.Avg:0.###}, max={highStats.Max:0.###}]";
+    }
+
+    private static (float Min, float Avg, float Max) DescribeThresholds(IReadOnlyList<float> values)
+    {
+        var min = values[0];
+        var max = values[0];
+        double sum = 0;
+        for (var i = 0; i < values.Count; i++)
+        {
+            var value = values[i];
+            if (value < min)
+            {
+                min = value;
+            }
+
+            if (value > max)
+            {
+                max = value;
+            }
+
+            sum += value;
+        }
+
+        var avg = values.Count > 0 ? (float)(sum / values.Count) : 0f;
+        return (min, avg, max);
     }
 
     private static class FftUtility

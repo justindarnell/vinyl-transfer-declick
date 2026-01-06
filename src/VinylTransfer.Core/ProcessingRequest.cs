@@ -12,5 +12,6 @@ public sealed record ProcessingDiagnostics(
     int ResidualClicks,
     float EstimatedNoiseFloor,
     float ProcessingGainDb,
-    float DeltaRms
+    float DeltaRms,
+    string TransientThresholdSummary
 );
