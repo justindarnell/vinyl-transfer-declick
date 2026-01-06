@@ -213,7 +213,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var maxSize = 2 * window + 1;
 
         // Use heap allocation for large windows to avoid stack overflow
-        const int MaxStackAllocSize = 128;
+        // Conservative threshold since this is called in a loop for each sample
+        const int MaxStackAllocSize = 32;
         
         if (maxSize <= MaxStackAllocSize)
         {
@@ -328,14 +329,13 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 var offsetInChannel = segmentStart + frame * hopSize;
                 var buffer = new Complex[frameSize];
                 double sumSq = 0;
-                for (var i = 0; i < frameSize; i++)
+                
+                // Calculate safe upper bound for this frame to avoid bounds check in inner loop
+                var maxSampleOffset = Math.Min(frameSize, (samples.Length / channels) - offsetInChannel);
+                
+                for (var i = 0; i < maxSampleOffset; i++)
                 {
                     var sampleIndex = (offsetInChannel + i) * channels + channel;
-                    if (sampleIndex >= samples.Length)
-                    {
-                        break;
-                    }
-                    
                     var sample = samples[sampleIndex];
                     var windowed = sample * window[i];
                     buffer[i] = new Complex(windowed, 0);

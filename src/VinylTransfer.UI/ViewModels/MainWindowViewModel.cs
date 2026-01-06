@@ -637,13 +637,20 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             return;
         }
 
-        // Estimate current position based on buffered bytes consumed
-        var bytesBuffered = _bufferedProvider.BufferedBytes;
-        var totalBytes = (_outputDevice.OutputWaveFormat?.AverageBytesPerSecond ?? 0) * 
-                         (_outputDevice.GetPosition() / (double)TimeSpan.TicksPerSecond);
+        // Calculate position based on the current time position
+        // Note: This is an approximation since NAudio doesn't provide exact sample position
+        var outputFormat = _outputDevice.OutputWaveFormat;
+        if (outputFormat is null)
+        {
+            _playbackPosition = 0;
+            return;
+        }
+
+        // GetPosition returns bytes played
+        var bytesPlayed = _outputDevice.GetPosition();
+        var samplesPlayed = bytesPlayed / sizeof(float);
         
-        // Convert bytes to sample offset
-        _playbackPosition = (long)(totalBytes / sizeof(float));
+        _playbackPosition = samplesPlayed;
     }
 
     private void StopPlayback(bool updateStatus, bool stopDevice = true)
