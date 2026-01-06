@@ -27,7 +27,7 @@
 
         <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
           <StackPanel Spacing="8">
-            <TextBlock FontWeight="SemiBold" Text="2. Analyze & Tune" />
+            <TextBlock FontWeight="SemiBold" Text="2. Analyze &amp; Tune" />
             <TextBlock FontSize="12" Foreground="Gray"
                        Text="Get suggested settings or tweak the sliders below." />
             <Button Content="Recommend Settings"

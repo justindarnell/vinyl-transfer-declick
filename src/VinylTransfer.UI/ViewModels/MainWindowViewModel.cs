@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -12,11 +13,12 @@ using VinylTransfer.UI;
 
 namespace VinylTransfer.UI.ViewModels;
 
-public sealed class MainWindowViewModel : ReactiveObject
+public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 {
     private readonly WavFileService _wavFileService = new();
     private readonly DspAudioProcessor _processor = new();
     private readonly SettingsStore _settingsStore = new();
+    private readonly CompositeDisposable _disposables = new();
 
     private AudioBuffer? _inputBuffer;
     private AudioBuffer? _processedBuffer;
@@ -67,7 +69,8 @@ public sealed class MainWindowViewModel : ReactiveObject
             .Merge(PreviewCommand.ThrownExceptions)
             .Merge(PlayPreviewCommand.ThrownExceptions)
             .Merge(StopPreviewCommand.ThrownExceptions)
-            .Subscribe(ex => StatusMessage = $"Status: {ex.Message}");
+            .Subscribe(ex => StatusMessage = $"Status: {ex.Message}")
+            .DisposeWith(_disposables);
 
         LoadSettings();
     }
@@ -463,9 +466,16 @@ public sealed class MainWindowViewModel : ReactiveObject
     {
         if (!string.IsNullOrWhiteSpace(_loadedPath))
         {
+            var name = Path.GetFileNameWithoutExtension(_loadedPath) ?? "export";
+            var fileName = $"{name}-{suffix}.wav";
             var directory = Path.GetDirectoryName(_loadedPath);
-            var name = Path.GetFileNameWithoutExtension(_loadedPath);
-            return (directory, $"{name}-{suffix}.wav");
+
+            if (string.IsNullOrEmpty(directory))
+            {
+                return (null, fileName);
+            }
+
+            return (directory, fileName);
         }
 
         return (null, $"export-{suffix}.wav");
@@ -590,5 +600,11 @@ public sealed class MainWindowViewModel : ReactiveObject
         {
             StatusMessage = "Status: Playback stopped.";
         }
+    }
+
+    public void Dispose()
+    {
+        StopPlayback(updateStatus: false);
+        _disposables.Dispose();
     }
 }
