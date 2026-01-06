@@ -33,7 +33,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         samples.CopyTo(processedSamples, 0);
 
         progress?.Report(new ProcessingProgress(0.0, "Initializing DSP pipeline"));
-        var diagnostics = ApplyProcessing(
+        ApplyProcessing(
             processedSamples,
             input,
             settings,
@@ -103,6 +103,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
             cancellationToken.ThrowIfCancellationRequested();
             for (var channel = 0; channel < channels; channel++)
             {
+                // Periodically check for cancellation within the inner loop to improve responsiveness
+                if ((channel & 0x3F) == 0) // every 64 channels
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 var index = frame * channels + channel;
                 var sample = samples[index];
                 var abs = MathF.Abs(sample);
@@ -121,7 +127,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
             if (frame % progressInterval == 0 || frame == frameCount - 1)
             {
-                var percent = 0.2 + (0.75 * (frame / (double)Math.Max(1, frameCount - 1)));
+                var fraction = frameCount <= 1 ? 1.0 : frame / (double)(frameCount - 1);
+                var percent = 0.2 + (0.75 * fraction);
                 progress?.Report(new ProcessingProgress(percent, "Scanning for clicks/pops"));
             }
         }

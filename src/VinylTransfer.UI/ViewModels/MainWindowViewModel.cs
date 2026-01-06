@@ -15,6 +15,7 @@ public sealed class MainWindowViewModel : ReactiveObject
     private string _progressStage = "Idle";
     private double _progressValue;
     private bool _isProcessing;
+    private CancellationTokenSource? _cancellationTokenSource;
     private bool _useAutoMode = true;
     private float _autoClickSensitivity = 0.55f;
     private float _autoPopSensitivity = 0.5f;
@@ -167,11 +168,18 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        _inputBuffer = _wavFileService.Read(path);
-        _lastResult = null;
-        this.RaisePropertyChanged(nameof(HasInput));
-        this.RaisePropertyChanged(nameof(HasResult));
-        StatusMessage = $"Status: Loaded {_inputBuffer.FrameCount:N0} frames @ {_inputBuffer.SampleRate} Hz.";
+        try
+        {
+            _inputBuffer = _wavFileService.Read(path);
+            _lastResult = null;
+            this.RaisePropertyChanged(nameof(HasInput));
+            this.RaisePropertyChanged(nameof(HasResult));
+            StatusMessage = $"Status: Loaded {_inputBuffer.FrameCount:N0} frames @ {_inputBuffer.SampleRate} Hz.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Status: Failed to load WAV file. {ex.Message}";
+        }
     }
 
     private async Task RunProcessingAsync()
@@ -191,25 +199,37 @@ public sealed class MainWindowViewModel : ReactiveObject
         var request = new ProcessingRequest(_inputBuffer, settings);
         var progress = new Progress<ProcessingProgress>(UpdateProgress);
 
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = new CancellationTokenSource();
+
         try
         {
             _lastResult = await Task.Run(
-                () => _audioProcessor.Process(request, progress, CancellationToken.None));
+                () => _audioProcessor.Process(request, progress, _cancellationTokenSource.Token),
+                _cancellationTokenSource.Token);
+
+            this.RaisePropertyChanged(nameof(HasResult));
+
+            if (_lastResult is not null)
+            {
+                var diagnostics = _lastResult.Diagnostics;
+                StatusMessage =
+                    $"Status: Complete in {diagnostics.ProcessingTime.TotalMilliseconds:N0} ms. " +
+                    $"Clicks: {diagnostics.ClicksDetected:N0}, Pops: {diagnostics.PopsDetected:N0}, " +
+                    $"Noise floor: {diagnostics.EstimatedNoiseFloor:F4}.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Status: Processing cancelled.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Status: Processing failed. {ex.Message}";
         }
         finally
         {
             IsProcessing = false;
-        }
-
-        this.RaisePropertyChanged(nameof(HasResult));
-
-        if (_lastResult is not null)
-        {
-            var diagnostics = _lastResult.Diagnostics;
-            StatusMessage =
-                $"Status: Complete in {diagnostics.ProcessingTime.TotalMilliseconds:N0} ms. " +
-                $"Clicks: {diagnostics.ClicksDetected:N0}, Pops: {diagnostics.PopsDetected:N0}, " +
-                $"Noise floor: {diagnostics.EstimatedNoiseFloor:F4}.";
         }
     }
 
@@ -244,8 +264,15 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        _wavFileService.Write(path, _lastResult.Processed);
-        StatusMessage = $"Status: Exported processed WAV to {path}.";
+        try
+        {
+            _wavFileService.Write(path, _lastResult.Processed);
+            StatusMessage = $"Status: Exported processed WAV to {path}.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Status: Failed to export processed WAV. {ex.Message}";
+        }
     }
 
     private async Task ExportDifferenceAsync()
@@ -262,8 +289,15 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        _wavFileService.Write(path, _lastResult.Difference);
-        StatusMessage = $"Status: Exported difference WAV to {path}.";
+        try
+        {
+            _wavFileService.Write(path, _lastResult.Difference);
+            StatusMessage = $"Status: Exported difference WAV to {path}.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Status: Failed to export difference WAV. {ex.Message}";
+        }
     }
 
     private ProcessingSettings BuildSettings()
