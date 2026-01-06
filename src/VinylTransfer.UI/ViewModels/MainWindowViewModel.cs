@@ -288,7 +288,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         }
 
         var duration = TimeSpan.FromSeconds(buffer.FrameCount / (double)buffer.SampleRate);
-        return duration.ToString(duration.TotalHours >= 1 ? "h\:mm\:ss" : "m\:ss");
+        return duration.ToString(duration.TotalHours >= 1 ? "h\\:mm\\:ss" : "m\\:ss");
     }
 
     private string BuildDefaultExportName(string suffix)
