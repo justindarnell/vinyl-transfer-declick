@@ -30,7 +30,7 @@ public sealed class DetectedEventExportService
     private static void WriteCsv(string path, AudioBuffer buffer, IReadOnlyList<DetectedEvent> detectedEvents)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("Index,Timecode,Seconds,Frame,Type,Amplitude,SampleRate,Channels");
+        builder.AppendLine("Index,Timecode,Seconds,Frame,Type,Strength,SampleRate,Channels");
 
         var sampleRate = buffer.SampleRate;
         for (var i = 0; i < detectedEvents.Count; i++)
@@ -44,7 +44,7 @@ public sealed class DetectedEventExportService
                 seconds.ToString("F6", CultureInfo.InvariantCulture),
                 detectedEvent.Frame,
                 detectedEvent.Type,
-                detectedEvent.Amplitude.ToString("F6", CultureInfo.InvariantCulture),
+                detectedEvent.Strength.ToString("F6", CultureInfo.InvariantCulture),
                 sampleRate,
                 buffer.Channels));
         }
@@ -83,7 +83,7 @@ public sealed class DetectedEventExportService
                 Timecode = TimeSpan.FromSeconds(seconds).ToString("m\\:ss\\.fff", CultureInfo.InvariantCulture),
                 detectedEvent.Frame,
                 detectedEvent.Type,
-                detectedEvent.Amplitude
+                detectedEvent.Strength
             };
         }
     }

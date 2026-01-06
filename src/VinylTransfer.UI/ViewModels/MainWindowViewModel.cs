@@ -854,7 +854,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             var detectedEvent = DetectedEvents[i];
             var seconds = detectedEvent.Frame / (double)sampleRate;
             var timecode = TimeSpan.FromSeconds(seconds).ToString("m\\:ss\\.fff");
-            var label = $"{timecode} · {detectedEvent.Type} · {detectedEvent.Amplitude:F3}";
+            var label = $"{timecode} · {detectedEvent.Type} · {detectedEvent.Strength:F3}";
             options.Add(label);
         }
 
