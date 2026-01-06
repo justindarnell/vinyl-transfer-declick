@@ -15,9 +15,13 @@ namespace VinylTransfer.UI.ViewModels;
 
 public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 {
-    private readonly WavFileService _wavFileService = new();
-    private readonly DspAudioProcessor _processor = new();
-    private readonly SettingsStore _settingsStore = new();
+    private static readonly WavFileService SharedWavFileService = new();
+    private static readonly DspAudioProcessor SharedDspAudioProcessor = new();
+    private static readonly SettingsStore SharedSettingsStore = new();
+
+    private readonly WavFileService _wavFileService = SharedWavFileService;
+    private readonly DspAudioProcessor _processor = SharedDspAudioProcessor;
+    private readonly SettingsStore _settingsStore = SharedSettingsStore;
     private readonly CompositeDisposable _disposables = new();
 
     private AudioBuffer? _inputBuffer;
@@ -29,6 +33,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private WaveOutEvent? _outputDevice;
     private BufferedWaveProvider? _bufferedProvider;
     private bool _isPlaying;
+    private long _playbackPosition;
     private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
@@ -319,14 +324,22 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             return;
         }
 
+        var wasPlaying = _isPlaying;
+        if (wasPlaying)
+        {
+            // Save current playback position before switching
+            SavePlaybackPosition();
+        }
+
         _isPreviewingProcessed = !_isPreviewingProcessed;
         this.RaisePropertyChanged(nameof(DisplayBuffer));
         var source = _isPreviewingProcessed ? "Processed" : "Original";
         StatusMessage = $"Status: Preview set to {source} audio.";
 
-        if (_isPlaying)
+        if (wasPlaying)
         {
-            StartPlayback();
+            // Resume playback from saved position
+            StartPlayback(resumeFromPosition: true);
         }
     }
 
@@ -517,7 +530,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             UseMultiBandTransientDetection = UseMultiBandTransientDetection
         };
 
-        _settingsStore.Save(data);
+        Task.Run(() => _settingsStore.Save(data));
     }
 
     private void ApplyRecommendedSettings(ManualModeSettings settings)
@@ -542,7 +555,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _isPlaying, value);
     }
 
-    private void StartPlayback()
+    private void StartPlayback(bool resumeFromPosition = false)
     {
         var buffer = DisplayBuffer;
         if (buffer is null)
@@ -552,19 +565,48 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         StopPlayback(updateStatus: false);
 
+        if (!resumeFromPosition)
+        {
+            _playbackPosition = 0;
+        }
+
         var format = WaveFormat.CreateIeeeFloatWaveFormat(buffer.SampleRate, buffer.Channels);
         _bufferedProvider = new BufferedWaveProvider(format)
         {
             DiscardOnBufferOverflow = true
         };
 
-        var bytes = new byte[buffer.Samples.Length * sizeof(float)];
-        Buffer.BlockCopy(buffer.Samples, 0, bytes, 0, bytes.Length);
-        _bufferedProvider.AddSamples(bytes, 0, bytes.Length);
+        // Stream audio in chunks to avoid allocating large byte arrays for entire buffer
+        const int chunkSizeInSamples = 4096;
+        int totalSamples = buffer.Samples.Length;
+        int sampleSizeInBytes = sizeof(float);
+        var chunkBytes = new byte[chunkSizeInSamples * sampleSizeInBytes];
+
+        int sampleOffset = (int)_playbackPosition;
+        while (sampleOffset < totalSamples)
+        {
+            int samplesThisChunk = Math.Min(chunkSizeInSamples, totalSamples - sampleOffset);
+            int bytesThisChunk = samplesThisChunk * sampleSizeInBytes;
+
+            Buffer.BlockCopy(
+                buffer.Samples,
+                sampleOffset * sampleSizeInBytes,
+                chunkBytes,
+                0,
+                bytesThisChunk);
+
+            _bufferedProvider.AddSamples(chunkBytes, 0, bytesThisChunk);
+            sampleOffset += samplesThisChunk;
+        }
 
         _outputDevice = new WaveOutEvent();
         _playbackStoppedHandler = (_, _) =>
         {
+            if (_outputDevice is not null && !_outputDevice.PlaybackState.Equals(NAudio.Wave.PlaybackState.Stopped))
+            {
+                return;
+            }
+            
             IsPlaying = false;
             StopPlayback(updateStatus: true, stopDevice: false);
         };
@@ -573,6 +615,23 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _outputDevice.Play();
         IsPlaying = true;
         StatusMessage = "Status: Playing preview audio.";
+    }
+
+    private void SavePlaybackPosition()
+    {
+        if (_bufferedProvider is null || _outputDevice is null)
+        {
+            _playbackPosition = 0;
+            return;
+        }
+
+        // Estimate current position based on buffered bytes consumed
+        var bytesBuffered = _bufferedProvider.BufferedBytes;
+        var totalBytes = (_outputDevice.OutputWaveFormat?.AverageBytesPerSecond ?? 0) * 
+                         (_outputDevice.GetPosition() / (double)TimeSpan.TicksPerSecond);
+        
+        // Convert bytes to sample offset
+        _playbackPosition = (long)(totalBytes / sizeof(float));
     }
 
     private void StopPlayback(bool updateStatus, bool stopDevice = true)
@@ -588,10 +647,19 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             _outputDevice.PlaybackStopped -= _playbackStoppedHandler;
             _playbackStoppedHandler = null;
         }
-        if (stopDevice)
+        
+        if (stopDevice && _outputDevice.PlaybackState != NAudio.Wave.PlaybackState.Stopped)
         {
-            _outputDevice.Stop();
+            try
+            {
+                _outputDevice.Stop();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Device already disposed, ignore
+            }
         }
+        
         _outputDevice.Dispose();
         _outputDevice = null;
         _bufferedProvider = null;
