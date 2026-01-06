@@ -152,13 +152,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             ? settings.AutoMode.UseMultiBandTransientDetection
             : settings.ManualMode.UseMultiBandTransientDetection;
 
+        transientThresholdSummary = string.Empty;
         var transientFrames = useMultiBandTransientDetection
             ? DetectTransientFrames(samples, input.SampleRate, input.Channels, out transientThresholdSummary)
             : Array.Empty<bool>();
-        if (!useMultiBandTransientDetection)
-        {
-            transientThresholdSummary = string.Empty;
-        }
 
         clicksDetected = 0;
         popsDetected = 0;
