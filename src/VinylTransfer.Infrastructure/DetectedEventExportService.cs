@@ -17,6 +17,16 @@ public sealed class DetectedEventExportService
             throw new ArgumentException("Export path is required.", nameof(path));
         }
 
+        if (buffer is null)
+        {
+            throw new ArgumentNullException(nameof(buffer));
+        }
+
+        if (detectedEvents is null)
+        {
+            throw new ArgumentNullException(nameof(detectedEvents));
+        }
+
         var extension = Path.GetExtension(path);
         if (string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase))
         {
@@ -24,7 +34,15 @@ public sealed class DetectedEventExportService
             return;
         }
 
-        WriteJson(path, buffer, detectedEvents);
+        if (string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase))
+        {
+            WriteJson(path, buffer, detectedEvents);
+            return;
+        }
+
+        // Default to JSON for unrecognized or missing extensions
+        var jsonPath = Path.ChangeExtension(path, ".json");
+        WriteJson(jsonPath, buffer, detectedEvents);
     }
 
     private static void WriteCsv(string path, AudioBuffer buffer, IReadOnlyList<DetectedEvent> detectedEvents)
@@ -40,16 +58,32 @@ public sealed class DetectedEventExportService
             var timecode = TimeSpan.FromSeconds(seconds).ToString("m\\:ss\\.fff", CultureInfo.InvariantCulture);
             builder.AppendLine(string.Join(',',
                 i,
-                timecode,
+                EscapeCsvField(timecode),
                 seconds.ToString("F6", CultureInfo.InvariantCulture),
                 detectedEvent.Frame,
-                detectedEvent.Type,
+                EscapeCsvField(detectedEvent.Type.ToString()),
                 detectedEvent.Strength.ToString("F6", CultureInfo.InvariantCulture),
                 sampleRate,
                 buffer.Channels));
         }
 
         File.WriteAllText(path, builder.ToString());
+    }
+
+    private static string EscapeCsvField(string field)
+    {
+        if (string.IsNullOrEmpty(field))
+        {
+            return field;
+        }
+
+        // Escape fields that contain comma, quote, or newline
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
+        {
+            return $"\"{field.Replace("\"", "\"\"")}\"";
+        }
+
+        return field;
     }
 
     private static void WriteJson(string path, AudioBuffer buffer, IReadOnlyList<DetectedEvent> detectedEvents)
