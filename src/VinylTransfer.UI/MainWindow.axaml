@@ -26,6 +26,12 @@
         <TextBlock FontSize="12" Foreground="Gray"
                    Text="Analyze the loaded audio and reduce clicks, pops, and noise." />
 
+        <Button Content="Recommend Settings"
+                Command="{Binding RecommendSettingsCommand}"
+                ToolTip.Tip="Scan the audio and suggest slider values." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Analyze the recording and suggest cleanup settings." />
+
         <Button Content="A/B Preview"
                 Command="{Binding PreviewCommand}"
                 ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />

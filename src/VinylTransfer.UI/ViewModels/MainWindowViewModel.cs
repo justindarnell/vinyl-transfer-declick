@@ -50,6 +50,7 @@ public sealed class MainWindowViewModel : ReactiveObject
 
         ImportWavCommand = ReactiveCommand.CreateFromTask(ImportWavAsync);
         AutoCleanCommand = ReactiveCommand.CreateFromTask(ProcessAsync, canProcess);
+        RecommendSettingsCommand = ReactiveCommand.CreateFromTask(RecommendSettingsAsync, canProcess);
         PreviewCommand = ReactiveCommand.Create(HandlePreview, canPreview);
         PlayPreviewCommand = ReactiveCommand.Create(HandlePlayPreview, canProcess);
         StopPreviewCommand = ReactiveCommand.Create(HandleStopPreview, this.WhenAnyValue(vm => vm.IsPlaying));
@@ -57,6 +58,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         ExportDifferenceCommand = ReactiveCommand.CreateFromTask(ExportDifferenceAsync, canExportDifference);
 
         ImportWavCommand.ThrownExceptions.Merge(AutoCleanCommand.ThrownExceptions)
+            .Merge(RecommendSettingsCommand.ThrownExceptions)
             .Merge(ExportProcessedCommand.ThrownExceptions)
             .Merge(ExportDifferenceCommand.ThrownExceptions)
             .Merge(PreviewCommand.ThrownExceptions)
@@ -74,6 +76,8 @@ public sealed class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> ImportWavCommand { get; }
 
     public ReactiveCommand<Unit, Unit> AutoCleanCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> RecommendSettingsCommand { get; }
 
     public ReactiveCommand<Unit, Unit> PreviewCommand { get; }
 
@@ -246,6 +250,30 @@ public sealed class MainWindowViewModel : ReactiveObject
                         $"Estimated noise floor: {result.Diagnostics.EstimatedNoiseFloor:F4}.";
     }
 
+    private async Task RecommendSettingsAsync()
+    {
+        if (InputBuffer is null)
+        {
+            StatusMessage = "Status: Load a WAV file first.";
+            return;
+        }
+
+        StatusMessage = "Status: Analyzing audio for recommendations...";
+        var buffer = InputBuffer;
+        var summary = await Task.Run(() =>
+        {
+            var settings = AudioAnalysis.RecommendManualSettings(buffer, out var analysis);
+            return (settings, analysis);
+        });
+
+        ApplyRecommendedSettings(summary.settings);
+
+        StatusMessage = $"Status: Recommended settings applied · " +
+                        $"Noise floor: {ConvertAmplitudeToDb(summary.analysis.EstimatedNoiseFloor):F0} dB · " +
+                        $"Click threshold: {summary.analysis.ClickThreshold:F2} · " +
+                        $"Pop threshold: {summary.analysis.PopThreshold:F2}.";
+    }
+
     private void HandlePreview()
     {
         if (InputBuffer is null || ProcessedBuffer is null)
@@ -370,6 +398,16 @@ public sealed class MainWindowViewModel : ReactiveObject
         return MathF.Pow(10f, (float)decibels / 20f);
     }
 
+    private static double ConvertAmplitudeToDb(float amplitude)
+    {
+        if (amplitude <= 0f)
+        {
+            return -90;
+        }
+
+        return 20 * Math.Log10(amplitude);
+    }
+
     private static string FormatDuration(AudioBuffer buffer)
     {
         if (buffer.FrameCount == 0 || buffer.SampleRate == 0)
@@ -424,6 +462,19 @@ public sealed class MainWindowViewModel : ReactiveObject
         };
 
         _settingsStore.Save(data);
+    }
+
+    private void ApplyRecommendedSettings(ManualModeSettings settings)
+    {
+        _suppressSettingsSave = true;
+        ClickThreshold = settings.ClickThreshold;
+        ClickIntensity = settings.ClickIntensity;
+        PopThreshold = settings.PopThreshold;
+        PopIntensity = settings.PopIntensity;
+        NoiseFloorDb = ConvertAmplitudeToDb(settings.NoiseFloor);
+        NoiseReductionAmount = settings.NoiseReductionAmount;
+        _suppressSettingsSave = false;
+        SaveSettings();
     }
 
     private bool IsPlaying
