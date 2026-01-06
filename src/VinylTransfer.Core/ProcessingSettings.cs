@@ -8,7 +8,10 @@ public sealed record AutoModeSettings(
     float NoiseReductionAmount,
     bool UseMedianRepair,
     bool UseSpectralNoiseReduction,
-    bool UseMultiBandTransientDetection
+    bool UseMultiBandTransientDetection,
+    bool UseDecrackle,
+    float DecrackleIntensity,
+    bool UseBandLimitedInterpolation
 );
 
 public sealed record ManualModeSettings(
@@ -20,5 +23,8 @@ public sealed record ManualModeSettings(
     float NoiseReductionAmount,
     bool UseMedianRepair,
     bool UseSpectralNoiseReduction,
-    bool UseMultiBandTransientDetection
+    bool UseMultiBandTransientDetection,
+    bool UseDecrackle,
+    float DecrackleIntensity,
+    bool UseBandLimitedInterpolation
 );

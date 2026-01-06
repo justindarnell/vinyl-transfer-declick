@@ -30,6 +30,12 @@
             <TextBlock FontWeight="SemiBold" Text="2. Analyze &amp; Tune" />
             <TextBlock FontSize="12" Foreground="Gray"
                        Text="Get suggested settings or tweak the sliders below." />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Choose a preset to jump-start common vinyl profiles." />
+            <ComboBox ItemsSource="{Binding PresetOptions}"
+                      SelectedItem="{Binding SelectedPreset}"
+                      DisplayMemberBinding="{Binding Name}"
+                      ToolTip.Tip="Select a preset tuned for common vinyl profiles." />
             <Button Content="Recommend Settings"
                     Command="{Binding RecommendSettingsCommand}"
                     ToolTip.Tip="Scan the audio and suggest slider values." />
@@ -162,18 +168,72 @@
         <CheckBox Content="Enable multi-band transient detection"
                   IsChecked="{Binding UseMultiBandTransientDetection}"
                   ToolTip.Tip="Helps catch subtle ticks that are missed by a single threshold." />
+
+        <TextBlock Text="Decrackle Pass" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Smooth dense micro-impulses before click/pop repair." />
+        <CheckBox Content="Enable decrackle pass"
+                  IsChecked="{Binding UseDecrackle}"
+                  ToolTip.Tip="Targets dense micro-impulses to reduce crackle." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding DecrackleIntensity}"
+                  ToolTip.Tip="Strength of the decrackle smoothing." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding DecrackleIntensity, StringFormat={}{0:0.00}}" />
+        </Grid>
+
+        <TextBlock Text="Band-Limited Repair" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Interpolate repaired samples using a band-limited kernel." />
+        <CheckBox Content="Enable band-limited interpolation"
+                  IsChecked="{Binding UseBandLimitedInterpolation}"
+                  ToolTip.Tip="Uses band-limited interpolation to rebuild transients more naturally." />
+
+        <TextBlock Text="Waveform Overlays" Margin="0,8,0,0" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Show detected events and noise profile overlays." />
+        <CheckBox Content="Show click/pop markers"
+                  IsChecked="{Binding ShowEventOverlay}"
+                  ToolTip.Tip="Display detected click/pop locations on the waveform." />
+        <CheckBox Content="Show noise profile"
+                  IsChecked="{Binding ShowNoiseProfileOverlay}"
+                  ToolTip.Tip="Overlay the estimated noise profile across the waveform." />
+
+        <TextBlock Text="Timeline Zoom" Margin="0,8,0,0" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Zoom and pan the waveform/spectrogram for detailed inspection." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="1" Maximum="8" Value="{Binding ZoomFactor}"
+                  ToolTip.Tip="Zoom level (1x = full timeline)." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ZoomFactor, StringFormat={}{0:0.0}x}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding ViewOffset}"
+                  ToolTip.Tip="Pan through the timeline when zoomed in." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ViewOffset, StringFormat={}{0:0.00}}" />
+        </Grid>
       </StackPanel>
     </ScrollViewer>
 
     <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*" Margin="0,16,0,0">
       <TextBlock Text="Waveform" FontWeight="SemiBold" />
       <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8">
-        <controls:WaveformView Buffer="{Binding DisplayBuffer}" />
+        <controls:WaveformView Buffer="{Binding DisplayBuffer}"
+                               DetectedEvents="{Binding DetectedEvents}"
+                               NoiseProfile="{Binding NoiseProfile}"
+                               ShowEventOverlay="{Binding ShowEventOverlay}"
+                               ShowNoiseProfileOverlay="{Binding ShowNoiseProfileOverlay}"
+                               ZoomFactor="{Binding ZoomFactor}"
+                               ViewOffset="{Binding ViewOffset}" />
       </Border>
 
       <TextBlock Grid.Row="2" Text="Spectrogram" FontWeight="SemiBold" Margin="0,16,0,0" />
       <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,8,0,0">
-        <TextBlock Text="Spectrogram view placeholder" Foreground="Gray" />
+        <controls:SpectrogramView Buffer="{Binding DisplayBuffer}"
+                                  ZoomFactor="{Binding ZoomFactor}"
+                                  ViewOffset="{Binding ViewOffset}" />
       </Border>
     </Grid>
 

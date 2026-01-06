@@ -23,7 +23,12 @@ Application to process digitized vinyls to remove pops, clicks, and other noise.
   - Median-based repair for spikes.
   - Spectral noise reduction for steady hiss.
   - Multi-band transient detection to catch subtle ticks.
+  - Decrackle pass for dense micro-impulses before click/pop repair.
+  - Band-limited interpolation for more natural transient reconstruction.
 - Automated recommendations scan the audio to suggest initial settings and enable the new passes by default.
+- Objective diagnostics track clicks/pops/decrackle counts, residual clicks, SNR improvement, and delta RMS.
+- The waveform view can overlay detected events and a noise profile for targeted review.
+- Presets provide quick starting points for common vinyl profiles.
 
 ## Potential next steps
 
@@ -54,6 +59,14 @@ Application to process digitized vinyls to remove pops, clicks, and other noise.
 - Add objective regression metrics (SNR improvement, residual click count, delta RMS) with curated test vectors.
 - Expose detected events and noise profile overlays in the waveform view for targeted review.
 - Add presets for common vinyl profiles and A/B auditioning for rapid tuning.
+
+## Additional suggestions
+
+- Add curated regression fixtures and automated DSP tests that validate click/pop counts, RMS deltas, and SNR gains.
+- Add export of detected event markers (CSV/JSON) for external auditing.
+- Consider adaptive per-band thresholds driven by transient density to reduce over-repair in quiet passages.
+- Add spectral selection tools (lasso/brush) and region-specific processing on the spectrogram.
+- Add keyboard-driven zoom/pan shortcuts plus a minimap for long captures.
 
 ## Additional context for the next engineer
 
