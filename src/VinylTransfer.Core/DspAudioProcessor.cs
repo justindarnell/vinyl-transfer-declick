@@ -7,6 +7,33 @@ namespace VinylTransfer.Core;
 
 public sealed class DspAudioProcessor : IAudioProcessor
 {
+    // DSP parameters for adaptive FFT window sizing
+    // Target ~23ms window provides good time-frequency resolution trade-off:
+    //  - Short enough to track rapid spectral changes (transients, modulation)
+    //  - Long enough to provide adequate frequency resolution for noise profiling
+    //  - Matches perceptual time constants for musical artifacts
+    // This value is used consistently across spectral reduction and transient detection.
+    private const double AdaptiveWindowTargetMs = 23.0;
+    
+    // Maximum attenuation depth for spectral noise reduction.
+    // Limits how much a frequency bin's magnitude can be reduced (as a fraction of reductionAmount).
+    // 0.6 means at most 60% of the requested reduction is applied, preserving some signal.
+    private const float MaxAttenuationDepth = 0.6f;
+    
+    // Scaling factor for gentle flooring mode.
+    // When enabled, reduces the effective reduction amount to avoid over-processing.
+    // 0.6 provides a good balance between artifact reduction and noise suppression.
+    private const float GentleFlooringScale = 0.6f;
+    
+    // Temporal smoothing factor for per-bin gain interpolation between frames.
+    //  - 0.0  => no smoothing (gain follows the instantaneous estimate; can cause "musical noise").
+    //  - 1.0  => no adaptation (gain remains at the initial value; effectively disables updating).
+    //  0.85 was chosen empirically to balance artifact suppression and responsiveness:
+    //  it slows rapid frame-to-frame gain changes enough to reduce musical noise while
+    //  still allowing transients and changes in noise floor to be tracked audibly.
+    //  If you change this, validate the impact with listening tests across a range of material.
+    private const float TemporalSmoothingFactor = 0.85f;
+
     public ProcessingResult Process(ProcessingRequest request)
     {
         if (request is null)
@@ -80,7 +107,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 input.SampleRate,
                 input.Channels,
                 reductionAmount,
-                useGentleFlooring: !useSpectralNoiseReduction);
+                reduceAggressiveness: useSpectralNoiseReduction);
         }
 
         var useMedianRepair = settings.UseAutoMode
@@ -141,22 +168,29 @@ public sealed class DspAudioProcessor : IAudioProcessor
             throw new ArgumentNullException(nameof(buffer));
         }
 
-        var samples = buffer.Samples;
-        if (samples.Length == 0)
+        if (buffer.Samples.Length == 0)
         {
             return 0f;
         }
 
+        var segmentRms = ComputeSegmentRms(buffer);
+        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
+        return quietSegments.Length == 0 ? 0f : quietSegments.Average();
+    }
+
+    internal static List<float> ComputeSegmentRms(AudioBuffer buffer)
+    {
+        var samples = buffer.Samples;
         var frames = buffer.FrameCount;
         var channels = buffer.Channels;
         var segmentFrames = Math.Max(buffer.SampleRate * 2, 1);
         var segmentCount = (frames + segmentFrames - 1) / segmentFrames;
+        
+        var segmentRms = new List<float>(segmentCount);
         if (segmentCount <= 0)
         {
-            return 0f;
+            return segmentRms;
         }
-
-        var segmentRms = new List<float>(segmentCount);
 
         for (var segment = 0; segment < segmentCount; segment++)
         {
@@ -179,8 +213,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             segmentRms.Add(rms);
         }
 
-        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
-        return quietSegments.Length == 0 ? 0f : quietSegments.Average();
+        return segmentRms;
     }
 
     private static float BlendWithNeighbors(float[] samples, int frame, int channel, int channels, int frameCount, int window, float intensity)
@@ -270,12 +303,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
         int sampleRate,
         int channels,
         float reductionAmount,
-        bool useGentleFlooring)
+        bool reduceAggressiveness)
     {
         // Make frame size adaptive based on sample rate to maintain consistent time resolution.
-        // Target ~23ms window (1024 samples at 44.1kHz).
-        var targetTimeMs = 23.0;
-        var targetFrameSize = (int)(sampleRate * targetTimeMs / 1000.0);
+        var targetFrameSize = (int)(sampleRate * AdaptiveWindowTargetMs / 1000.0);
         
         // Round to nearest power of 2 for FFT
         var frameSize = 1;
@@ -294,7 +325,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             return;
         }
 
-        var effectiveReduction = useGentleFlooring ? reduction * 0.6f : reduction;
+        var effectiveReduction = reduceAggressiveness ? reduction * GentleFlooringScale : reduction;
         for (var channel = 0; channel < channels; channel++)
         {
             ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, effectiveReduction);
@@ -320,6 +351,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
         // Limit the maximum number of samples per channel processed in a single
         // segment to bound memory usage. This value can be tuned if needed.
         const int MaxSegmentSamplesPerChannel = 1_000_000;
+
+        // Persistent per-bin gain smoothing across all segments to maintain temporal continuity.
+        var previousGain = new float[frameSize];
+        Array.Fill(previousGain, 1f);
+        
+        var minGain = 1f - (MaxAttenuationDepth * reductionAmount);
 
         var segmentStart = 0;
         while (segmentStart < totalSamplesPerChannel)
@@ -367,10 +404,6 @@ public sealed class DspAudioProcessor : IAudioProcessor
             var noiseProfile = EstimateNoiseProfile(spectra, frameRms);
 
             // Synthesis: apply noise reduction, inverse FFT, and overlap-add.
-            var previousGain = new float[frameSize];
-            Array.Fill(previousGain, 1f);
-            const float TemporalSmoothing = 0.85f;
-            var minGain = 1f - (0.6f * reductionAmount);
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var spectrum = spectra[frame];
@@ -385,7 +418,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
                     var reduced = MathF.Max(magnitude - noise * reductionAmount, magnitude * minGain);
                     var targetGain = reduced / magnitude;
-                    var smoothedGain = (TemporalSmoothing * previousGain[i]) + ((1f - TemporalSmoothing) * targetGain);
+                    var smoothedGain = (TemporalSmoothingFactor * previousGain[i]) + ((1f - TemporalSmoothingFactor) * targetGain);
                     previousGain[i] = smoothedGain;
                     if (smoothedGain > 0f)
                     {
@@ -467,8 +500,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
     private static bool[] DetectTransientFrames(float[] samples, int sampleRate, int channels)
     {
-        var targetTimeMs = 23.0;
-        var targetFrameSize = (int)(sampleRate * targetTimeMs / 1000.0);
+        var targetFrameSize = (int)(sampleRate * AdaptiveWindowTargetMs / 1000.0);
         var frameSize = 1;
         while (frameSize < targetFrameSize)
         {

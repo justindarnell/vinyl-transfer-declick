@@ -80,23 +80,19 @@ public static class AudioAnalysis
 
         var clickThresholds = new List<float>(segmentCount);
         var popThresholds = new List<float>(segmentCount);
-        var segmentRms = new List<float>(segmentCount);
+        var segmentRms = DspAudioProcessor.ComputeSegmentRms(buffer);
 
         for (var segment = 0; segment < segmentCount; segment++)
         {
             var startFrame = segment * segmentFrames;
             var endFrame = Math.Min(frames, startFrame + segmentFrames);
             var absValues = new List<float>((endFrame - startFrame) / 4);
-            double sumSq = 0;
-            var totalSamples = 0;
 
             for (var frame = startFrame; frame < endFrame; frame++)
             {
                 for (var channel = 0; channel < channels; channel++)
                 {
                     var sample = samples[frame * channels + channel];
-                    sumSq += sample * sample;
-                    totalSamples++;
                     // Process every 4th frame for efficiency. This subsampling provides
                     // a representative percentile estimate while reducing memory and CPU overhead.
                     // Note: Short-duration clicks between sampled frames may be missed.
@@ -106,9 +102,6 @@ public static class AudioAnalysis
                     }
                 }
             }
-
-            var rms = totalSamples > 0 ? (float)Math.Sqrt(sumSq / totalSamples) : 0f;
-            segmentRms.Add(rms);
 
             var absArray = absValues.ToArray();
             clickThresholds.Add(GetPercentile(absArray, 0.995f));
