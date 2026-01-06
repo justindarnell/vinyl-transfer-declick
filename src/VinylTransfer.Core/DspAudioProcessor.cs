@@ -181,7 +181,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                     {
                         decracklesDetected++;
                         samples[index] = useBandLimitedInterpolation
-                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 6)
+                            ? BlendWithInterpolation(samples, frame, channel, channels, input.FrameCount, 6, decrackleIntensity)
                             : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, decrackleIntensity);
                         detectedEvents.Add(new DetectedEvent(frame, DetectedEventType.Decrackle, abs));
                     }
@@ -192,7 +192,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                     {
                         popsDetected++;
                         samples[index] = useBandLimitedInterpolation
-                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 10)
+                            ? BlendWithInterpolation(samples, frame, channel, channels, input.FrameCount, 10, popIntensity)
                             : useMedianRepair
                                 ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3)
                                 : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3, popIntensity);
@@ -205,7 +205,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                     {
                         clicksDetected++;
                         samples[index] = useBandLimitedInterpolation
-                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 6)
+                            ? BlendWithInterpolation(samples, frame, channel, channels, input.FrameCount, 6, clickIntensity)
                             : useMedianRepair
                                 ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1)
                                 : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, clickIntensity);
@@ -268,6 +268,21 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return centerAbs > localRms * energyRatio && hfEmphasis > localRms * hfRatio;
     }
 
+    private static float BlendWithInterpolation(
+        float[] samples,
+        int frame,
+        int channel,
+        int channels,
+        int frameCount,
+        int radius,
+        float intensity)
+    {
+        var original = samples[frame * channels + channel];
+        var interpolated = BandLimitedInterpolate(samples, frame, channel, channels, frameCount, radius);
+        var clampedIntensity = Math.Clamp(intensity, 0f, 1f);
+        return (original * (1f - clampedIntensity)) + (interpolated * clampedIntensity);
+    }
+
     private static float BandLimitedInterpolate(
         float[] samples,
         int frame,
@@ -295,7 +310,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
             var offset = i - frame;
             var distance = Math.Abs(offset);
-            var sinc = distance == 0 ? 1.0 : Math.Sin(Math.PI * Cutoff * offset) / (Math.PI * offset);
+            var sinc = distance == 0 ? 1.0 : Math.Sin(Math.PI * Cutoff * offset) / (Math.PI * Cutoff * offset);
             var window = 0.54 + 0.46 * Math.Cos(Math.PI * distance / radius);
             var weight = sinc * window;
             sum += samples[i * channels + channel] * weight;
