@@ -57,10 +57,11 @@ public static class AudioAnalysis
             return 0f;
         }
 
-        Array.Sort(absSamples);
+        var sorted = (float[])absSamples.Clone();
+        Array.Sort(sorted);
         var clamped = Math.Clamp(percentile, 0f, 1f);
-        var index = (int)MathF.Floor((absSamples.Length - 1) * clamped);
-        return absSamples[index];
+        var index = (int)MathF.Floor((sorted.Length - 1) * clamped);
+        return sorted[index];
     }
 
     private static SegmentAnalysis AnalyzeSegments(AudioBuffer buffer)
@@ -96,6 +97,9 @@ public static class AudioAnalysis
                     var sample = samples[frame * channels + channel];
                     sumSq += sample * sample;
                     totalSamples++;
+                    // Process every 4th frame for efficiency. This subsampling provides
+                    // a representative percentile estimate while reducing memory and CPU overhead.
+                    // Note: Short-duration clicks between sampled frames may be missed.
                     if (frame % 4 == 0)
                     {
                         absValues.Add(MathF.Abs(sample));
@@ -144,11 +148,13 @@ public static class AudioAnalysis
             return 0f;
         }
 
-        values.Sort();
-        var mid = values.Count / 2;
-        return values.Count % 2 == 0
-            ? (values[mid - 1] + values[mid]) / 2f
-            : values[mid];
+        var count = values.Count;
+        var sorted = new List<float>(values);
+        sorted.Sort();
+        var mid = count / 2;
+        return count % 2 == 0
+            ? (sorted[mid - 1] + sorted[mid]) / 2f
+            : sorted[mid];
     }
 }
 

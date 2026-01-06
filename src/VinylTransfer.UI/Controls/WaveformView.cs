@@ -8,6 +8,8 @@ namespace VinylTransfer.UI.Controls;
 
 public sealed class WaveformView : Control
 {
+    private static readonly Pen WaveformPen = new(Brushes.DeepSkyBlue, 1);
+    
     public static readonly StyledProperty<AudioBuffer?> BufferProperty =
         AvaloniaProperty.Register<WaveformView, AudioBuffer?>(nameof(Buffer));
 
@@ -39,7 +41,7 @@ public sealed class WaveformView : Control
             return;
         }
 
-        var pen = new Pen(Brushes.DeepSkyBlue, 1);
+        var pen = WaveformPen;
         var midY = bounds.Height / 2;
         var halfHeight = bounds.Height / 2 - 2;
         var frameCount = buffer.FrameCount;
@@ -73,17 +75,14 @@ public sealed class WaveformView : Control
             for (var frame = startFrame; frame <= endFrame; frame++)
             {
                 var sampleIndex = frame * channels;
-                float sum = 0f;
                 for (var channel = 0; channel < channels; channel++)
                 {
-                    sum += samples[sampleIndex + channel];
-                }
-
-                var avg = sum / channels;
-                var abs = MathF.Abs(avg);
-                if (abs > maxAmplitude)
-                {
-                    maxAmplitude = abs;
+                    var sample = samples[sampleIndex + channel];
+                    var absSample = MathF.Abs(sample);
+                    if (absSample > maxAmplitude)
+                    {
+                        maxAmplitude = absSample;
+                    }
                 }
             }
 

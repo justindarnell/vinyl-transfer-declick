@@ -210,7 +210,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
     {
         var start = Math.Max(0, frame - window);
         var end = Math.Min(frameCount - 1, frame + window);
-        var values = new List<float>(end - start);
+        var maxSize = 2 * window + 1;
+
+        Span<float> values = stackalloc float[maxSize];
+        var count = 0;
 
         for (var i = start; i <= end; i++)
         {
@@ -219,17 +222,17 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 continue;
             }
 
-            values.Add(samples[i * channels + channel]);
+            values[count++] = samples[i * channels + channel];
         }
 
-        if (values.Count == 0)
+        if (count == 0)
         {
             return samples[frame * channels + channel];
         }
 
-        values.Sort();
-        var mid = values.Count / 2;
-        return values.Count % 2 == 0
+        values.Slice(0, count).Sort();
+        var mid = count / 2;
+        return count % 2 == 0
             ? (values[mid - 1] + values[mid]) / 2f
             : values[mid];
     }
@@ -401,11 +404,17 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
             FftUtility.Fft(buffer, invert: false);
 
+            var binFrequencyResolution = sampleRate / (float)frameSize;
             for (var bin = 0; bin < buffer.Length / 2; bin++)
             {
                 var magnitude = buffer[bin].Magnitude;
-                var frequency = bin * sampleRate / (float)frameSize;
+                var frequency = bin * binFrequencyResolution;
                 var power = (float)(magnitude * magnitude);
+                // Frequency bands for transient detection:
+                // Low: <2kHz (captures bass/drums/pops)
+                // Mid: 2-6kHz (captures vocals/instruments)
+                // High: >6kHz (captures clicks/surface noise)
+                // These thresholds are optimized for typical vinyl recordings.
                 if (frequency < 2000f)
                 {
                     lowBand[frame] += power;
@@ -454,6 +463,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
         }
 
+        // Expand transient flags from frame-level granularity to per-sample resolution.
+        // Each frame's transient flag is applied to all samples in the corresponding hop.
+        // This provides adequate precision for threshold adjustments while maintaining
+        // computational efficiency of frame-level analysis.
         var perSampleFlags = new bool[totalFrames];
         for (var frame = 0; frame < frameCount; frame++)
         {
@@ -492,6 +505,13 @@ public sealed class DspAudioProcessor : IAudioProcessor
         public static void Fft(Complex[] buffer, bool invert)
         {
             var n = buffer.Length;
+            
+            // FFT requires buffer size to be a power of 2 for Cooley-Tukey radix-2 algorithm
+            if (n == 0 || (n & (n - 1)) != 0)
+            {
+                throw new ArgumentException("Buffer size must be a power of 2.", nameof(buffer));
+            }
+            
             for (int i = 1, j = 0; i < n; i++)
             {
                 var bit = n >> 1;
