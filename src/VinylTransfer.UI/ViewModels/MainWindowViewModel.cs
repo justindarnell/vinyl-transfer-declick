@@ -530,7 +530,18 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             UseMultiBandTransientDetection = UseMultiBandTransientDetection
         };
 
-        Task.Run(() => _settingsStore.Save(data));
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _settingsStore.Save(data);
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't block UI - settings save is not critical
+                System.Diagnostics.Debug.WriteLine($"Failed to save settings: {ex.Message}");
+            }
+        });
     }
 
     private void ApplyRecommendedSettings(ManualModeSettings settings)
@@ -602,7 +613,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _outputDevice = new WaveOutEvent();
         _playbackStoppedHandler = (_, _) =>
         {
-            if (_outputDevice is not null && !_outputDevice.PlaybackState.Equals(NAudio.Wave.PlaybackState.Stopped))
+            // Check if device is disposed before accessing
+            if (_outputDevice is null)
             {
                 return;
             }

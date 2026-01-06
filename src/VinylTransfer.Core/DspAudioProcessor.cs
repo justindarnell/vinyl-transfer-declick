@@ -212,7 +212,23 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var end = Math.Min(frameCount - 1, frame + window);
         var maxSize = 2 * window + 1;
 
-        Span<float> values = stackalloc float[maxSize];
+        // Use heap allocation for large windows to avoid stack overflow
+        const int MaxStackAllocSize = 128;
+        
+        if (maxSize <= MaxStackAllocSize)
+        {
+            Span<float> values = stackalloc float[maxSize];
+            return ComputeMedian(samples, frame, channel, channels, start, end, values);
+        }
+        else
+        {
+            var values = new float[maxSize];
+            return ComputeMedian(samples, frame, channel, channels, start, end, values);
+        }
+    }
+
+    private static float ComputeMedian(float[] samples, int frame, int channel, int channels, int start, int end, Span<float> values)
+    {
         var count = 0;
 
         for (var i = start; i <= end; i++)
