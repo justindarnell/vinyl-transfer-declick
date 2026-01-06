@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using VinylTransfer.UI.ViewModels;
 
 namespace VinylTransfer.UI;
 
@@ -17,7 +18,7 @@ public sealed class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new ViewModels.MainWindowViewModel()
+                ViewModel = new MainWindowViewModel()
             };
         }
 
