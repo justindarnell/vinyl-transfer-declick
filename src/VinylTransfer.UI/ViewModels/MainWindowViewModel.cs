@@ -202,13 +202,15 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = new CancellationTokenSource();
+
+        using var cts = new CancellationTokenSource();
+        _cancellationTokenSource = cts;
 
         try
         {
             _lastResult = await Task.Run(
-                () => _audioProcessor.Process(request, progress, _cancellationTokenSource.Token),
-                _cancellationTokenSource.Token);
+                () => _audioProcessor.Process(request, progress, cts.Token),
+                cts.Token);
 
             this.RaisePropertyChanged(nameof(HasResult));
 
@@ -232,6 +234,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         finally
         {
             IsProcessing = false;
+            if (_cancellationTokenSource == cts)
+            {
+                _cancellationTokenSource = null;
+            }
         }
     }
 
