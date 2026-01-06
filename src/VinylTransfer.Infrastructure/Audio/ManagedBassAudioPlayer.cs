@@ -106,7 +106,7 @@ public sealed class ManagedBassAudioPlayer : IAudioPlayer
         }
     }
 
-    private int StreamReadCallback(IntPtr buffer, int length, IntPtr user)
+    private int StreamReadCallback(int handle, IntPtr buffer, int length, IntPtr user)
     {
         if (_samples is null || length <= 0)
         {
