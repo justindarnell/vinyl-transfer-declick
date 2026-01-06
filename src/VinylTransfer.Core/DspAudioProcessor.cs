@@ -107,7 +107,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 input.SampleRate,
                 input.Channels,
                 reductionAmount,
-                reduceAggressiveness: useSpectralNoiseReduction);
+                applyGentleFlooring: useSpectralNoiseReduction);
         }
 
         var useMedianRepair = settings.UseAutoMode
@@ -303,7 +303,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         int sampleRate,
         int channels,
         float reductionAmount,
-        bool reduceAggressiveness)
+        bool applyGentleFlooring)
     {
         // Make frame size adaptive based on sample rate to maintain consistent time resolution.
         var targetFrameSize = (int)(sampleRate * AdaptiveWindowTargetMs / 1000.0);
@@ -325,7 +325,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             return;
         }
 
-        var effectiveReduction = reduceAggressiveness ? reduction * GentleFlooringScale : reduction;
+        var effectiveReduction = applyGentleFlooring ? reduction * GentleFlooringScale : reduction;
         for (var channel = 0; channel < channels; channel++)
         {
             ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, effectiveReduction);
