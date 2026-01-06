@@ -69,4 +69,9 @@ public sealed record SettingsData
     public bool UseMedianRepair { get; init; } = true;
     public bool UseSpectralNoiseReduction { get; init; } = true;
     public bool UseMultiBandTransientDetection { get; init; } = true;
+    public bool UseDecrackle { get; init; } = true;
+    public double DecrackleIntensity { get; init; } = 0.35;
+    public bool UseBandLimitedInterpolation { get; init; } = true;
+    public bool ShowEventOverlay { get; init; } = true;
+    public bool ShowNoiseProfileOverlay { get; init; } = true;
 }

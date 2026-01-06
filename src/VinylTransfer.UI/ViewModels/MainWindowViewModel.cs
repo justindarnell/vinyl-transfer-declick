@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
@@ -27,6 +28,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private AudioBuffer? _inputBuffer;
     private AudioBuffer? _processedBuffer;
     private AudioBuffer? _differenceBuffer;
+    private IReadOnlyList<DetectedEvent> _detectedEvents = Array.Empty<DetectedEvent>();
+    private NoiseProfile? _noiseProfile;
     private string? _loadedPath;
     private bool _isPreviewingProcessed;
     private bool _suppressSettingsSave;
@@ -46,6 +49,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private bool _useMedianRepair = true;
     private bool _useSpectralNoiseReduction = true;
     private bool _useMultiBandTransientDetection = true;
+    private bool _useDecrackle = true;
+    private double _decrackleIntensity = 0.35;
+    private bool _useBandLimitedInterpolation = true;
+    private bool _showEventOverlay = true;
+    private bool _showNoiseProfileOverlay = true;
+    private PresetDefinition? _selectedPreset;
 
     public MainWindowViewModel()
     {
@@ -196,6 +205,83 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         }
     }
 
+    public bool UseDecrackle
+    {
+        get => _useDecrackle;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _useDecrackle, value);
+            SaveSettings();
+        }
+    }
+
+    public double DecrackleIntensity
+    {
+        get => _decrackleIntensity;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _decrackleIntensity, value);
+            SaveSettings();
+        }
+    }
+
+    public bool UseBandLimitedInterpolation
+    {
+        get => _useBandLimitedInterpolation;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _useBandLimitedInterpolation, value);
+            SaveSettings();
+        }
+    }
+
+    public bool ShowEventOverlay
+    {
+        get => _showEventOverlay;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showEventOverlay, value);
+            SaveSettings();
+        }
+    }
+
+    public bool ShowNoiseProfileOverlay
+    {
+        get => _showNoiseProfileOverlay;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showNoiseProfileOverlay, value);
+            SaveSettings();
+        }
+    }
+
+    public IReadOnlyList<DetectedEvent> DetectedEvents
+    {
+        get => _detectedEvents;
+        private set => this.RaiseAndSetIfChanged(ref _detectedEvents, value);
+    }
+
+    public NoiseProfile? NoiseProfile
+    {
+        get => _noiseProfile;
+        private set => this.RaiseAndSetIfChanged(ref _noiseProfile, value);
+    }
+
+    public IReadOnlyList<PresetDefinition> PresetOptions { get; } = PresetDefinition.DefaultPresets();
+
+    public PresetDefinition? SelectedPreset
+    {
+        get => _selectedPreset;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedPreset, value);
+            if (value is not null)
+            {
+                ApplyPreset(value);
+            }
+        }
+    }
+
     public AudioBuffer? DisplayBuffer
     {
         get
@@ -262,6 +348,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _loadedPath = path;
         ProcessedBuffer = null;
         DifferenceBuffer = null;
+        DetectedEvents = Array.Empty<DetectedEvent>();
+        NoiseProfile = AudioAnalysis.BuildNoiseProfile(buffer);
         _isPreviewingProcessed = false;
 
         StatusMessage = $"Status: Loaded {Path.GetFileName(path)} · {buffer.SampleRate} Hz · {buffer.Channels} ch · {FormatDuration(buffer)}.";
@@ -283,11 +371,15 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         ProcessedBuffer = result.Processed;
         DifferenceBuffer = result.Difference;
+        DetectedEvents = result.Artifacts.DetectedEvents;
+        NoiseProfile = result.Artifacts.NoiseProfile;
         _isPreviewingProcessed = true;
         this.RaisePropertyChanged(nameof(DisplayBuffer));
 
         StatusMessage = $"Status: Cleaned audio in {result.Diagnostics.ProcessingTime.TotalMilliseconds:F0} ms · " +
                         $"Clicks: {result.Diagnostics.ClicksDetected} · Pops: {result.Diagnostics.PopsDetected} · " +
+                        $"Decrackle: {result.Diagnostics.DecracklesDetected} · Residual clicks: {result.Diagnostics.ResidualClicks} · " +
+                        $"SNR gain: {result.Diagnostics.SnrImprovementDb:F1} dB · ΔRMS: {result.Diagnostics.DeltaRms:F4} · " +
                         $"Estimated noise floor: {result.Diagnostics.EstimatedNoiseFloor:F4}.";
     }
 
@@ -436,7 +528,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
             UseSpectralNoiseReduction: UseSpectralNoiseReduction,
-            UseMultiBandTransientDetection: UseMultiBandTransientDetection);
+            UseMultiBandTransientDetection: UseMultiBandTransientDetection,
+            UseDecrackle: UseDecrackle,
+            DecrackleIntensity: (float)DecrackleIntensity,
+            UseBandLimitedInterpolation: UseBandLimitedInterpolation);
 
         var autoSettings = new AutoModeSettings(
             ClickSensitivity: (float)ClickThreshold,
@@ -444,7 +539,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
             UseSpectralNoiseReduction: UseSpectralNoiseReduction,
-            UseMultiBandTransientDetection: UseMultiBandTransientDetection);
+            UseMultiBandTransientDetection: UseMultiBandTransientDetection,
+            UseDecrackle: UseDecrackle,
+            DecrackleIntensity: (float)DecrackleIntensity,
+            UseBandLimitedInterpolation: UseBandLimitedInterpolation);
 
         return new ProcessingSettings(autoSettings, manualSettings, UseAutoMode: false);
     }
@@ -507,6 +605,11 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
         UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
+        UseDecrackle = settings.UseDecrackle;
+        DecrackleIntensity = settings.DecrackleIntensity;
+        UseBandLimitedInterpolation = settings.UseBandLimitedInterpolation;
+        ShowEventOverlay = settings.ShowEventOverlay;
+        ShowNoiseProfileOverlay = settings.ShowNoiseProfileOverlay;
         _suppressSettingsSave = false;
     }
 
@@ -527,7 +630,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             NoiseReductionAmount = NoiseReductionAmount,
             UseMedianRepair = UseMedianRepair,
             UseSpectralNoiseReduction = UseSpectralNoiseReduction,
-            UseMultiBandTransientDetection = UseMultiBandTransientDetection
+            UseMultiBandTransientDetection = UseMultiBandTransientDetection,
+            UseDecrackle = UseDecrackle,
+            DecrackleIntensity = DecrackleIntensity,
+            UseBandLimitedInterpolation = UseBandLimitedInterpolation,
+            ShowEventOverlay = ShowEventOverlay,
+            ShowNoiseProfileOverlay = ShowNoiseProfileOverlay
         };
 
         _ = Task.Run(() =>
@@ -556,8 +664,31 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
         UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
+        UseDecrackle = settings.UseDecrackle;
+        DecrackleIntensity = settings.DecrackleIntensity;
+        UseBandLimitedInterpolation = settings.UseBandLimitedInterpolation;
         _suppressSettingsSave = false;
         SaveSettings();
+    }
+
+    private void ApplyPreset(PresetDefinition preset)
+    {
+        _suppressSettingsSave = true;
+        ClickThreshold = preset.ClickThreshold;
+        ClickIntensity = preset.ClickIntensity;
+        PopThreshold = preset.PopThreshold;
+        PopIntensity = preset.PopIntensity;
+        NoiseFloorDb = preset.NoiseFloorDb;
+        NoiseReductionAmount = preset.NoiseReductionAmount;
+        UseMedianRepair = preset.UseMedianRepair;
+        UseSpectralNoiseReduction = preset.UseSpectralNoiseReduction;
+        UseMultiBandTransientDetection = preset.UseMultiBandTransientDetection;
+        UseDecrackle = preset.UseDecrackle;
+        DecrackleIntensity = preset.DecrackleIntensity;
+        UseBandLimitedInterpolation = preset.UseBandLimitedInterpolation;
+        _suppressSettingsSave = false;
+        SaveSettings();
+        StatusMessage = $"Status: Applied preset '{preset.Name}'.";
     }
 
     private bool IsPlaying
@@ -696,5 +827,84 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         StopPlayback(updateStatus: false);
         _disposables.Dispose();
+    }
+}
+
+public sealed record PresetDefinition(
+    string Name,
+    double ClickThreshold,
+    double ClickIntensity,
+    double PopThreshold,
+    double PopIntensity,
+    double NoiseFloorDb,
+    double NoiseReductionAmount,
+    bool UseMedianRepair,
+    bool UseSpectralNoiseReduction,
+    bool UseMultiBandTransientDetection,
+    bool UseDecrackle,
+    double DecrackleIntensity,
+    bool UseBandLimitedInterpolation)
+{
+    public static IReadOnlyList<PresetDefinition> DefaultPresets()
+    {
+        return new[]
+        {
+            new PresetDefinition(
+                "Gentle Cleanup",
+                ClickThreshold: 0.45,
+                ClickIntensity: 0.45,
+                PopThreshold: 0.38,
+                PopIntensity: 0.45,
+                NoiseFloorDb: -60,
+                NoiseReductionAmount: 0.35,
+                UseMedianRepair: true,
+                UseSpectralNoiseReduction: true,
+                UseMultiBandTransientDetection: true,
+                UseDecrackle: true,
+                DecrackleIntensity: 0.35,
+                UseBandLimitedInterpolation: true),
+            new PresetDefinition(
+                "Noisy Pressing",
+                ClickThreshold: 0.35,
+                ClickIntensity: 0.7,
+                PopThreshold: 0.32,
+                PopIntensity: 0.75,
+                NoiseFloorDb: -55,
+                NoiseReductionAmount: 0.55,
+                UseMedianRepair: true,
+                UseSpectralNoiseReduction: true,
+                UseMultiBandTransientDetection: true,
+                UseDecrackle: true,
+                DecrackleIntensity: 0.55,
+                UseBandLimitedInterpolation: true),
+            new PresetDefinition(
+                "Shellac 78s",
+                ClickThreshold: 0.3,
+                ClickIntensity: 0.8,
+                PopThreshold: 0.26,
+                PopIntensity: 0.85,
+                NoiseFloorDb: -50,
+                NoiseReductionAmount: 0.6,
+                UseMedianRepair: false,
+                UseSpectralNoiseReduction: true,
+                UseMultiBandTransientDetection: true,
+                UseDecrackle: true,
+                DecrackleIntensity: 0.65,
+                UseBandLimitedInterpolation: true),
+            new PresetDefinition(
+                "Pristine Audiophile",
+                ClickThreshold: 0.55,
+                ClickIntensity: 0.35,
+                PopThreshold: 0.45,
+                PopIntensity: 0.4,
+                NoiseFloorDb: -65,
+                NoiseReductionAmount: 0.25,
+                UseMedianRepair: true,
+                UseSpectralNoiseReduction: false,
+                UseMultiBandTransientDetection: true,
+                UseDecrackle: false,
+                DecrackleIntensity: 0.3,
+                UseBandLimitedInterpolation: true)
+        };
     }
 }

@@ -58,7 +58,15 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var processedSamples = new float[samples.Length];
         samples.CopyTo(processedSamples, 0);
 
-        var diagnostics = ApplyProcessing(processedSamples, input, settings, out var clicksDetected, out var popsDetected, out var noiseFloor);
+        var diagnostics = ApplyProcessing(
+            processedSamples,
+            input,
+            settings,
+            out var clicksDetected,
+            out var popsDetected,
+            out var decracklesDetected,
+            out var noiseFloor,
+            out var detectedEvents);
 
         var difference = new float[samples.Length];
         for (var i = 0; i < samples.Length; i++)
@@ -70,9 +78,21 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
         var processed = new AudioBuffer(processedSamples, input.SampleRate, input.Channels);
         var diffBuffer = new AudioBuffer(difference, input.SampleRate, input.Channels);
-        var resultDiagnostics = new ProcessingDiagnostics(stopwatch.Elapsed, clicksDetected, popsDetected, noiseFloor);
+        var residualClicks = CountResidualClicks(processedSamples, input, settings, noiseFloor);
+        var deltaRms = ComputeRms(processedSamples) - ComputeRms(samples);
+        var snrImprovementDb = EstimateSnrImprovement(samples, difference);
+        var resultDiagnostics = new ProcessingDiagnostics(
+            stopwatch.Elapsed,
+            clicksDetected,
+            popsDetected,
+            decracklesDetected,
+            residualClicks,
+            noiseFloor,
+            snrImprovementDb,
+            deltaRms);
+        var artifacts = new ProcessingArtifacts(detectedEvents, AudioAnalysis.BuildNoiseProfile(input));
 
-        return new ProcessingResult(processed, diffBuffer, resultDiagnostics);
+        return new ProcessingResult(processed, diffBuffer, resultDiagnostics, artifacts);
     }
 
     private static float ApplyProcessing(
@@ -81,7 +101,9 @@ public sealed class DspAudioProcessor : IAudioProcessor
         ProcessingSettings settings,
         out int clicksDetected,
         out int popsDetected,
-        out float noiseFloor)
+        out int decracklesDetected,
+        out float noiseFloor,
+        out List<DetectedEvent> detectedEvents)
     {
         var estimatedNoiseFloor = EstimateNoiseFloor(input);
         noiseFloor = settings.UseAutoMode ? estimatedNoiseFloor : settings.ManualMode.NoiseFloor;
@@ -95,6 +117,16 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
         var clickIntensity = settings.UseAutoMode ? 0.7f + 0.3f * settings.AutoMode.ClickSensitivity : settings.ManualMode.ClickIntensity;
         var popIntensity = settings.UseAutoMode ? 0.8f + 0.2f * settings.AutoMode.PopSensitivity : settings.ManualMode.PopIntensity;
+        var useBandLimitedInterpolation = settings.UseAutoMode
+            ? settings.AutoMode.UseBandLimitedInterpolation
+            : settings.ManualMode.UseBandLimitedInterpolation;
+
+        var useDecrackle = settings.UseAutoMode
+            ? settings.AutoMode.UseDecrackle
+            : settings.ManualMode.UseDecrackle;
+        var decrackleIntensity = settings.UseAutoMode
+            ? settings.AutoMode.DecrackleIntensity
+            : settings.ManualMode.DecrackleIntensity;
 
         var reductionAmount = settings.UseAutoMode ? settings.AutoMode.NoiseReductionAmount : settings.ManualMode.NoiseReductionAmount;
         if (reductionAmount > 0f)
@@ -123,6 +155,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
         clicksDetected = 0;
         popsDetected = 0;
+        decracklesDetected = 0;
+        detectedEvents = new List<DetectedEvent>();
 
         var channels = input.Channels;
         for (var frame = 0; frame < input.FrameCount; frame++)
@@ -141,24 +175,192 @@ public sealed class DspAudioProcessor : IAudioProcessor
                     popThresholdAdjusted *= 0.85f;
                 }
 
-                if (abs >= popThresholdAdjusted)
+                if (useDecrackle && abs >= noiseFloor * 1.8f && abs < clickThresholdAdjusted)
                 {
-                    popsDetected++;
-                    samples[index] = useMedianRepair
-                        ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3)
-                        : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3, popIntensity);
+                    if (IsImpulseLike(samples, frame, channel, channels, input.FrameCount, 2, 2.2f, 1.4f))
+                    {
+                        decracklesDetected++;
+                        samples[index] = useBandLimitedInterpolation
+                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 6)
+                            : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, decrackleIntensity);
+                        detectedEvents.Add(new DetectedEvent(frame, DetectedEventType.Decrackle, abs));
+                    }
+                }
+                else if (abs >= popThresholdAdjusted)
+                {
+                    if (IsImpulseLike(samples, frame, channel, channels, input.FrameCount, 3, 2.5f, 1.2f))
+                    {
+                        popsDetected++;
+                        samples[index] = useBandLimitedInterpolation
+                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 10)
+                            : useMedianRepair
+                                ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3)
+                                : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3, popIntensity);
+                        detectedEvents.Add(new DetectedEvent(frame, DetectedEventType.Pop, abs));
+                    }
                 }
                 else if (abs >= clickThresholdAdjusted)
                 {
-                    clicksDetected++;
-                    samples[index] = useMedianRepair
-                        ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1)
-                        : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, clickIntensity);
+                    if (IsImpulseLike(samples, frame, channel, channels, input.FrameCount, 2, 2.3f, 1.4f))
+                    {
+                        clicksDetected++;
+                        samples[index] = useBandLimitedInterpolation
+                            ? BandLimitedInterpolate(samples, frame, channel, channels, input.FrameCount, 6)
+                            : useMedianRepair
+                                ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1)
+                                : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 1, clickIntensity);
+                        detectedEvents.Add(new DetectedEvent(frame, DetectedEventType.Click, abs));
+                    }
                 }
             }
         }
 
         return estimatedNoiseFloor;
+    }
+
+    private static bool IsImpulseLike(
+        float[] samples,
+        int frame,
+        int channel,
+        int channels,
+        int frameCount,
+        int window,
+        float energyRatio,
+        float hfRatio)
+    {
+        var start = Math.Max(0, frame - window);
+        var end = Math.Min(frameCount - 1, frame + window);
+        if (start == end)
+        {
+            return false;
+        }
+
+        double energy = 0;
+        var count = 0;
+        for (var i = start; i <= end; i++)
+        {
+            if (i == frame)
+            {
+                continue;
+            }
+
+            var sample = samples[i * channels + channel];
+            energy += sample * sample;
+            count++;
+        }
+
+        if (count == 0)
+        {
+            return false;
+        }
+
+        var localRms = MathF.Sqrt((float)(energy / count));
+        var centerSample = samples[frame * channels + channel];
+        if (localRms <= 1e-6f)
+        {
+            return MathF.Abs(centerSample) > 0.001f;
+        }
+
+        var centerAbs = MathF.Abs(centerSample);
+        var prevIndex = Math.Max(frame - 1, 0) * channels + channel;
+        var nextIndex = Math.Min(frame + 1, frameCount - 1) * channels + channel;
+        var hfEmphasis = MathF.Abs(2f * centerSample - samples[prevIndex] - samples[nextIndex]);
+        return centerAbs > localRms * energyRatio && hfEmphasis > localRms * hfRatio;
+    }
+
+    private static float BandLimitedInterpolate(
+        float[] samples,
+        int frame,
+        int channel,
+        int channels,
+        int frameCount,
+        int radius)
+    {
+        const float Cutoff = 0.45f;
+        var start = Math.Max(0, frame - radius);
+        var end = Math.Min(frameCount - 1, frame + radius);
+        if (start == end)
+        {
+            return samples[frame * channels + channel];
+        }
+
+        double sum = 0;
+        double weightSum = 0;
+        for (var i = start; i <= end; i++)
+        {
+            if (i == frame)
+            {
+                continue;
+            }
+
+            var offset = i - frame;
+            var distance = Math.Abs(offset);
+            var sinc = distance == 0 ? 1.0 : Math.Sin(Math.PI * Cutoff * offset) / (Math.PI * offset);
+            var window = 0.54 + 0.46 * Math.Cos(Math.PI * distance / radius);
+            var weight = sinc * window;
+            sum += samples[i * channels + channel] * weight;
+            weightSum += weight;
+        }
+
+        if (Math.Abs(weightSum) < 1e-9)
+        {
+            return samples[frame * channels + channel];
+        }
+
+        return (float)(sum / weightSum);
+    }
+
+    private static int CountResidualClicks(float[] samples, AudioBuffer input, ProcessingSettings settings, float noiseFloor)
+    {
+        var clickThreshold = settings.UseAutoMode
+            ? noiseFloor * (1f + settings.AutoMode.ClickSensitivity * 8f)
+            : settings.ManualMode.ClickThreshold;
+        var channels = input.Channels;
+        var frameCount = input.FrameCount;
+        var count = 0;
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            for (var channel = 0; channel < channels; channel++)
+            {
+                var sample = samples[frame * channels + channel];
+                if (MathF.Abs(sample) >= clickThreshold &&
+                    IsImpulseLike(samples, frame, channel, channels, frameCount, 2, 2.1f, 1.2f))
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private static float ComputeRms(float[] samples)
+    {
+        if (samples.Length == 0)
+        {
+            return 0f;
+        }
+
+        double sumSq = 0;
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var sample = samples[i];
+            sumSq += sample * sample;
+        }
+
+        return (float)Math.Sqrt(sumSq / samples.Length);
+    }
+
+    private static float EstimateSnrImprovement(float[] inputSamples, float[] differenceSamples)
+    {
+        var inputRms = ComputeRms(inputSamples);
+        var diffRms = ComputeRms(differenceSamples);
+        if (diffRms <= 0f)
+        {
+            return 0f;
+        }
+
+        return (float)(20 * Math.Log10((inputRms + 1e-6f) / (diffRms + 1e-6f)));
     }
 
     private static float EstimateNoiseFloor(AudioBuffer buffer)

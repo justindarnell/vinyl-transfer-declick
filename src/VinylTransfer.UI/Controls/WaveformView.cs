@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -9,9 +11,21 @@ namespace VinylTransfer.UI.Controls;
 public sealed class WaveformView : Control
 {
     private static readonly Pen WaveformPen = new(Brushes.DeepSkyBlue, 1);
+    private static readonly Pen ClickPen = new(Brushes.OrangeRed, 1);
+    private static readonly Pen PopPen = new(Brushes.MediumPurple, 1);
+    private static readonly Pen DecracklePen = new(Brushes.Gold, 1);
+    private static readonly Pen NoiseProfilePen = new(Brushes.LightGray, 1, dashStyle: new DashStyle(new[] { 4d, 4d }, 0));
     
     public static readonly StyledProperty<AudioBuffer?> BufferProperty =
         AvaloniaProperty.Register<WaveformView, AudioBuffer?>(nameof(Buffer));
+    public static readonly StyledProperty<IReadOnlyList<DetectedEvent>?> DetectedEventsProperty =
+        AvaloniaProperty.Register<WaveformView, IReadOnlyList<DetectedEvent>?>(nameof(DetectedEvents));
+    public static readonly StyledProperty<NoiseProfile?> NoiseProfileProperty =
+        AvaloniaProperty.Register<WaveformView, NoiseProfile?>(nameof(NoiseProfile));
+    public static readonly StyledProperty<bool> ShowEventOverlayProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowEventOverlay), true);
+    public static readonly StyledProperty<bool> ShowNoiseProfileOverlayProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowNoiseProfileOverlay), true);
 
     public AudioBuffer? Buffer
     {
@@ -19,9 +33,37 @@ public sealed class WaveformView : Control
         set => SetValue(BufferProperty, value);
     }
 
+    public IReadOnlyList<DetectedEvent>? DetectedEvents
+    {
+        get => GetValue(DetectedEventsProperty);
+        set => SetValue(DetectedEventsProperty, value);
+    }
+
+    public NoiseProfile? NoiseProfile
+    {
+        get => GetValue(NoiseProfileProperty);
+        set => SetValue(NoiseProfileProperty, value);
+    }
+
+    public bool ShowEventOverlay
+    {
+        get => GetValue(ShowEventOverlayProperty);
+        set => SetValue(ShowEventOverlayProperty, value);
+    }
+
+    public bool ShowNoiseProfileOverlay
+    {
+        get => GetValue(ShowNoiseProfileOverlayProperty);
+        set => SetValue(ShowNoiseProfileOverlayProperty, value);
+    }
+
     static WaveformView()
     {
         BufferProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        DetectedEventsProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        NoiseProfileProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ShowEventOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ShowNoiseProfileOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
     }
 
     public override void Render(DrawingContext context)
@@ -94,6 +136,16 @@ public sealed class WaveformView : Control
 
             context.DrawLine(pen, new Point(xPos, yTop), new Point(xPos, yBottom));
         }
+
+        if (ShowNoiseProfileOverlay)
+        {
+            DrawNoiseProfile(context, bounds, buffer);
+        }
+
+        if (ShowEventOverlay)
+        {
+            DrawDetectedEvents(context, bounds, buffer);
+        }
     }
 
     private static void DrawPlaceholder(DrawingContext context, Rect bounds)
@@ -111,5 +163,63 @@ public sealed class WaveformView : Control
             bounds.Y + (bounds.Height - text.Height) / 2);
 
         context.DrawText(text, point);
+    }
+
+    private void DrawDetectedEvents(DrawingContext context, Rect bounds, AudioBuffer buffer)
+    {
+        var events = DetectedEvents;
+        if (events is null || events.Count == 0)
+        {
+            return;
+        }
+
+        var frameCount = buffer.FrameCount;
+        if (frameCount <= 0)
+        {
+            return;
+        }
+
+        var height = bounds.Height;
+        foreach (var detectedEvent in events)
+        {
+            var x = bounds.X + (detectedEvent.Frame / (double)frameCount) * bounds.Width;
+            var pen = detectedEvent.Type switch
+            {
+                DetectedEventType.Pop => PopPen,
+                DetectedEventType.Decrackle => DecracklePen,
+                _ => ClickPen
+            };
+            context.DrawLine(pen, new Point(x, bounds.Y), new Point(x, bounds.Y + height));
+        }
+    }
+
+    private void DrawNoiseProfile(DrawingContext context, Rect bounds, AudioBuffer buffer)
+    {
+        var profile = NoiseProfile;
+        if (profile is null || profile.SegmentRms.Count == 0)
+        {
+            return;
+        }
+
+        var maxRms = profile.SegmentRms.Max();
+        if (maxRms <= 0f)
+        {
+            return;
+        }
+
+        var segmentCount = profile.SegmentRms.Count;
+        var points = new List<Point>(segmentCount);
+        for (var segment = 0; segment < segmentCount; segment++)
+        {
+            var x = bounds.X + (segment / (double)Math.Max(1, segmentCount - 1)) * bounds.Width;
+            var normalized = profile.SegmentRms[segment] / maxRms;
+            var y = bounds.Y + bounds.Height - (normalized * bounds.Height);
+            points.Add(new Point(x, y));
+        }
+
+        for (var i = 1; i < points.Count; i++)
+        {
+            context.DrawLine(NoiseProfilePen, points[i - 1], points[i]);
+        }
     }
 }

@@ -47,7 +47,10 @@ public static class AudioAnalysis
             NoiseReductionAmount: noiseReduction,
             UseMedianRepair: true,
             UseSpectralNoiseReduction: true,
-            UseMultiBandTransientDetection: true);
+            UseMultiBandTransientDetection: true,
+            UseDecrackle: true,
+            DecrackleIntensity: 0.4f,
+            UseBandLimitedInterpolation: true);
     }
 
     private static float GetPercentile(float[] absSamples, float percentile)
@@ -121,6 +124,18 @@ public static class AudioAnalysis
         {
             SnrDb = snrDb
         };
+    }
+
+    public static NoiseProfile BuildNoiseProfile(AudioBuffer buffer)
+    {
+        if (buffer is null)
+        {
+            throw new ArgumentNullException(nameof(buffer));
+        }
+
+        var segmentRms = DspAudioProcessor.ComputeSegmentRms(buffer);
+        var segmentFrames = Math.Max(buffer.SampleRate * 2, 1);
+        return new NoiseProfile(segmentRms, segmentFrames, buffer.SampleRate);
     }
 
     private static float EstimateNoiseReduction(float noiseFloor, float snrDb)
