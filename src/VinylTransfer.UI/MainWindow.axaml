@@ -13,28 +13,28 @@
 
     <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
       <StackPanel Spacing="12">
-        <Button Content="Import WAV" />
-        <Button Content="Auto Clean" />
-        <Button Content="A/B Preview" />
-        <Button Content="Export Processed WAV" />
-        <Button Content="Export Difference WAV" />
+        <Button Content="Import WAV" Command="{Binding ImportWavCommand}" />
+        <Button Content="Auto Clean" Command="{Binding AutoCleanCommand}" />
+        <Button Content="A/B Preview" Command="{Binding PreviewCommand}" />
+        <Button Content="Export Processed WAV" Command="{Binding ExportProcessedCommand}" />
+        <Button Content="Export Difference WAV" Command="{Binding ExportDifferenceCommand}" />
 
         <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
 
         <TextBlock Text="Click Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="0.4" />
+        <Slider Minimum="0" Maximum="1" Value="{Binding ClickThreshold}" />
         <TextBlock Text="Click Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="0.6" />
+        <Slider Minimum="0" Maximum="1" Value="{Binding ClickIntensity}" />
 
         <TextBlock Text="Pop Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="0.35" />
+        <Slider Minimum="0" Maximum="1" Value="{Binding PopThreshold}" />
         <TextBlock Text="Pop Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="0.5" />
+        <Slider Minimum="0" Maximum="1" Value="{Binding PopIntensity}" />
 
         <TextBlock Text="Noise Floor" />
-        <Slider Minimum="-90" Maximum="-20" Value="-60" />
+        <Slider Minimum="-90" Maximum="-20" Value="{Binding NoiseFloorDb}" />
         <TextBlock Text="Noise Reduction" />
-        <Slider Minimum="0" Maximum="1" Value="0.5" />
+        <Slider Minimum="0" Maximum="1" Value="{Binding NoiseReductionAmount}" />
       </StackPanel>
     </ScrollViewer>
 
