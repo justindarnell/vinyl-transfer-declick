@@ -66,4 +66,6 @@ public sealed record SettingsData
     public double PopIntensity { get; init; } = 0.5;
     public double NoiseFloorDb { get; init; } = -60;
     public double NoiseReductionAmount { get; init; } = 0.5;
+    public bool UseMedianRepair { get; init; } = true;
+    public bool UseSpectralNoiseReduction { get; init; } = true;
 }

@@ -13,10 +13,10 @@ public static class AudioAnalysis
             throw new ArgumentNullException(nameof(buffer));
         }
 
-        var absSamples = GetAbsoluteSamples(buffer);
-        var noiseFloor = EstimateNoiseFloor(absSamples);
-        var clickThreshold = GetPercentile(absSamples, 0.995f);
-        var popThreshold = GetPercentile(absSamples, 0.999f);
+        var segmentSummary = AnalyzeSegments(buffer);
+        var noiseFloor = segmentSummary.NoiseFloor;
+        var clickThreshold = segmentSummary.ClickThreshold;
+        var popThreshold = segmentSummary.PopThreshold;
 
         if (popThreshold < clickThreshold)
         {
@@ -26,10 +26,12 @@ public static class AudioAnalysis
         var clickIntensity = Math.Clamp(0.5f + (clickThreshold * 0.3f), 0.35f, 0.85f);
         var popIntensity = Math.Clamp(0.6f + (popThreshold * 0.25f), 0.45f, 0.9f);
 
-        var noiseReduction = Math.Clamp((float)(noiseFloor * 8f), 0.2f, 0.8f);
+        var noiseReduction = EstimateNoiseReduction(noiseFloor, segmentSummary.SnrDb);
 
         summary = new AnalysisSummary(
             EstimatedNoiseFloor: noiseFloor,
+            EstimatedSnrDb: segmentSummary.SnrDb,
+            SegmentCount: segmentSummary.SegmentCount,
             ClickThreshold: clickThreshold,
             PopThreshold: popThreshold,
             ClickIntensity: clickIntensity,
@@ -42,43 +44,9 @@ public static class AudioAnalysis
             PopThreshold: popThreshold,
             PopIntensity: popIntensity,
             NoiseFloor: noiseFloor,
-            NoiseReductionAmount: noiseReduction);
-    }
-
-    private static float[] GetAbsoluteSamples(AudioBuffer buffer)
-    {
-        var samples = buffer.Samples;
-        if (samples.Length == 0)
-        {
-            return Array.Empty<float>();
-        }
-
-        var sampleCount = Math.Min(samples.Length, 100_000);
-        var step = Math.Max(1, samples.Length / sampleCount);
-        var values = new List<float>(sampleCount);
-
-        for (var i = 0; i < samples.Length; i += step)
-        {
-            values.Add(MathF.Abs(samples[i]));
-        }
-
-        return values.ToArray();
-    }
-
-    private static float EstimateNoiseFloor(IReadOnlyList<float> absSamples)
-    {
-        if (absSamples.Count == 0)
-        {
-            return 0f;
-        }
-
-        double total = 0;
-        for (var i = 0; i < absSamples.Count; i++)
-        {
-            total += absSamples[i];
-        }
-
-        return (float)(total / absSamples.Count);
+            NoiseReductionAmount: noiseReduction,
+            UseMedianRepair: true,
+            UseSpectralNoiseReduction: true);
     }
 
     private static float GetPercentile(float[] absSamples, float percentile)
@@ -93,13 +61,112 @@ public static class AudioAnalysis
         var index = (int)MathF.Floor((absSamples.Length - 1) * clamped);
         return absSamples[index];
     }
+
+    private static SegmentAnalysis AnalyzeSegments(AudioBuffer buffer)
+    {
+        var samples = buffer.Samples;
+        if (samples.Length == 0)
+        {
+            return new SegmentAnalysis(0f, 0f, 0f, 0);
+        }
+
+        var frames = buffer.FrameCount;
+        var channels = buffer.Channels;
+        var sampleRate = buffer.SampleRate;
+        var segmentFrames = Math.Max(sampleRate * 2, 1);
+        var segmentCount = (frames + segmentFrames - 1) / segmentFrames;
+
+        var clickThresholds = new List<float>(segmentCount);
+        var popThresholds = new List<float>(segmentCount);
+        var segmentRms = new List<float>(segmentCount);
+
+        for (var segment = 0; segment < segmentCount; segment++)
+        {
+            var startFrame = segment * segmentFrames;
+            var endFrame = Math.Min(frames, startFrame + segmentFrames);
+            var absValues = new List<float>((endFrame - startFrame) / 4);
+            double sumSq = 0;
+            var totalSamples = 0;
+
+            for (var frame = startFrame; frame < endFrame; frame++)
+            {
+                for (var channel = 0; channel < channels; channel++)
+                {
+                    var sample = samples[frame * channels + channel];
+                    sumSq += sample * sample;
+                    totalSamples++;
+                    if (frame % 4 == 0)
+                    {
+                        absValues.Add(MathF.Abs(sample));
+                    }
+                }
+            }
+
+            var rms = totalSamples > 0 ? (float)Math.Sqrt(sumSq / totalSamples) : 0f;
+            segmentRms.Add(rms);
+
+            var absArray = absValues.ToArray();
+            clickThresholds.Add(GetPercentile(absArray, 0.995f));
+            popThresholds.Add(GetPercentile(absArray, 0.999f));
+        }
+
+        var clickThreshold = Median(clickThresholds);
+        var popThreshold = Median(popThresholds);
+
+        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
+        var noiseFloor = quietSegments.Length == 0 ? 0f : quietSegments.Average();
+
+        var overallRms = segmentRms.Count == 0 ? 0f : segmentRms.Average();
+        var snrDb = noiseFloor > 0f ? (float)(20 * Math.Log10(overallRms / noiseFloor)) : 0f;
+
+        return new SegmentAnalysis(noiseFloor, clickThreshold, popThreshold, segmentCount)
+        {
+            SnrDb = snrDb
+        };
+    }
+
+    private static float EstimateNoiseReduction(float noiseFloor, float snrDb)
+    {
+        if (noiseFloor <= 0f)
+        {
+            return 0.2f;
+        }
+
+        var reduction = 1f - (snrDb / 40f);
+        return Math.Clamp(reduction, 0.2f, 0.8f);
+    }
+
+    private static float Median(List<float> values)
+    {
+        if (values.Count == 0)
+        {
+            return 0f;
+        }
+
+        values.Sort();
+        var mid = values.Count / 2;
+        return values.Count % 2 == 0
+            ? (values[mid - 1] + values[mid]) / 2f
+            : values[mid];
+    }
 }
 
 public sealed record AnalysisSummary(
     float EstimatedNoiseFloor,
+    float EstimatedSnrDb,
+    int SegmentCount,
     float ClickThreshold,
     float PopThreshold,
     float ClickIntensity,
     float PopIntensity,
     float NoiseReductionAmount
 );
+
+public sealed record SegmentAnalysis(
+    float NoiseFloor,
+    float ClickThreshold,
+    float PopThreshold,
+    int SegmentCount)
+{
+    public float SnrDb { get; init; }
+}

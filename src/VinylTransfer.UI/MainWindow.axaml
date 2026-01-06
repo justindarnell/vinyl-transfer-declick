@@ -123,6 +123,20 @@
           <TextBlock Grid.Column="1" Margin="8,0,0,0"
                      Text="{Binding NoiseReductionAmount, StringFormat={}{0:0.00}}" />
         </Grid>
+
+        <TextBlock Text="Median Repair" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Uses a median filter to smooth sudden clicks and pops." />
+        <CheckBox Content="Enable median-based repair"
+                  IsChecked="{Binding UseMedianRepair}"
+                  ToolTip.Tip="Median repair is good at removing sharp spikes without dulling transients." />
+
+        <TextBlock Text="Spectral Noise Reduction" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Reduce hiss by subtracting a noise profile in the frequency domain." />
+        <CheckBox Content="Enable spectral noise reduction"
+                  IsChecked="{Binding UseSpectralNoiseReduction}"
+                  ToolTip.Tip="Spectral noise reduction is more effective for steady hiss." />
       </StackPanel>
     </ScrollViewer>
 

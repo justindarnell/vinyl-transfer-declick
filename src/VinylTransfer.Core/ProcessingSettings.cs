@@ -5,7 +5,9 @@ public sealed record ProcessingSettings(AutoModeSettings AutoMode, ManualModeSet
 public sealed record AutoModeSettings(
     float ClickSensitivity,
     float PopSensitivity,
-    float NoiseReductionAmount
+    float NoiseReductionAmount,
+    bool UseMedianRepair,
+    bool UseSpectralNoiseReduction
 );
 
 public sealed record ManualModeSettings(
@@ -14,5 +16,7 @@ public sealed record ManualModeSettings(
     float PopThreshold,
     float PopIntensity,
     float NoiseFloor,
-    float NoiseReductionAmount
+    float NoiseReductionAmount,
+    bool UseMedianRepair,
+    bool UseSpectralNoiseReduction
 );

@@ -36,6 +36,8 @@ public sealed class MainWindowViewModel : ReactiveObject
     private double _popIntensity = 0.5;
     private double _noiseFloorDb = -60;
     private double _noiseReductionAmount = 0.5;
+    private bool _useMedianRepair = true;
+    private bool _useSpectralNoiseReduction = true;
 
     public MainWindowViewModel()
     {
@@ -155,6 +157,26 @@ public sealed class MainWindowViewModel : ReactiveObject
         }
     }
 
+    public bool UseMedianRepair
+    {
+        get => _useMedianRepair;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _useMedianRepair, value);
+            SaveSettings();
+        }
+    }
+
+    public bool UseSpectralNoiseReduction
+    {
+        get => _useSpectralNoiseReduction;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _useSpectralNoiseReduction, value);
+            SaveSettings();
+        }
+    }
+
     public AudioBuffer? DisplayBuffer
     {
         get
@@ -270,6 +292,7 @@ public sealed class MainWindowViewModel : ReactiveObject
 
         StatusMessage = $"Status: Recommended settings applied · " +
                         $"Noise floor: {ConvertAmplitudeToDb(summary.analysis.EstimatedNoiseFloor):F0} dB · " +
+                        $"SNR: {summary.analysis.EstimatedSnrDb:F1} dB · " +
                         $"Click threshold: {summary.analysis.ClickThreshold:F2} · " +
                         $"Pop threshold: {summary.analysis.PopThreshold:F2}.";
     }
@@ -383,12 +406,16 @@ public sealed class MainWindowViewModel : ReactiveObject
             PopThreshold: (float)PopThreshold,
             PopIntensity: (float)PopIntensity,
             NoiseFloor: ConvertDbToAmplitude(NoiseFloorDb),
-            NoiseReductionAmount: (float)NoiseReductionAmount);
+            NoiseReductionAmount: (float)NoiseReductionAmount,
+            UseMedianRepair: UseMedianRepair,
+            UseSpectralNoiseReduction: UseSpectralNoiseReduction);
 
         var autoSettings = new AutoModeSettings(
             ClickSensitivity: (float)ClickThreshold,
             PopSensitivity: (float)PopThreshold,
-            NoiseReductionAmount: (float)NoiseReductionAmount);
+            NoiseReductionAmount: (float)NoiseReductionAmount,
+            UseMedianRepair: UseMedianRepair,
+            UseSpectralNoiseReduction: UseSpectralNoiseReduction);
 
         return new ProcessingSettings(autoSettings, manualSettings, UseAutoMode: false);
     }
@@ -441,6 +468,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         PopIntensity = settings.PopIntensity;
         NoiseFloorDb = settings.NoiseFloorDb;
         NoiseReductionAmount = settings.NoiseReductionAmount;
+        UseMedianRepair = settings.UseMedianRepair;
+        UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
         _suppressSettingsSave = false;
     }
 
@@ -458,7 +487,9 @@ public sealed class MainWindowViewModel : ReactiveObject
             PopThreshold = PopThreshold,
             PopIntensity = PopIntensity,
             NoiseFloorDb = NoiseFloorDb,
-            NoiseReductionAmount = NoiseReductionAmount
+            NoiseReductionAmount = NoiseReductionAmount,
+            UseMedianRepair = UseMedianRepair,
+            UseSpectralNoiseReduction = UseSpectralNoiseReduction
         };
 
         _settingsStore.Save(data);
@@ -473,6 +504,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         PopIntensity = settings.PopIntensity;
         NoiseFloorDb = ConvertAmplitudeToDb(settings.NoiseFloor);
         NoiseReductionAmount = settings.NoiseReductionAmount;
+        UseMedianRepair = settings.UseMedianRepair;
+        UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
         _suppressSettingsSave = false;
         SaveSettings();
     }
