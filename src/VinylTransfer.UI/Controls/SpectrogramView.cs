@@ -124,7 +124,7 @@ public sealed class SpectrogramView : Control
         var mono = BuildMonoSamples(buffer);
         if (fftSize < 64 || mono.Length < fftSize)
         {
-            return bitmap;
+            return new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888);
         }
 
         var window = BuildHannWindow(fftSize);
