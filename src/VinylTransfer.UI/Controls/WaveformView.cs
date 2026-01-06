@@ -11,10 +11,8 @@ namespace VinylTransfer.UI.Controls;
 public sealed class WaveformView : Control
 {
     private static readonly Pen WaveformPen = new(Brushes.DeepSkyBlue, 1);
-    private static readonly Pen ClickPen = new(Brushes.OrangeRed, 1);
-    private static readonly Pen PopPen = new(Brushes.MediumPurple, 1);
-    private static readonly Pen DecracklePen = new(Brushes.Gold, 1);
     private static readonly Pen NoiseProfilePen = new(Brushes.LightGray, 1, dashStyle: new DashStyle(new[] { 4d, 4d }, 0));
+    private static readonly Pen SelectedEventPen = new(Brushes.White, 2);
     
     public static readonly StyledProperty<AudioBuffer?> BufferProperty =
         AvaloniaProperty.Register<WaveformView, AudioBuffer?>(nameof(Buffer));
@@ -26,6 +24,18 @@ public sealed class WaveformView : Control
         AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowEventOverlay), true);
     public static readonly StyledProperty<bool> ShowNoiseProfileOverlayProperty =
         AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowNoiseProfileOverlay), true);
+    public static readonly StyledProperty<bool> ShowClickMarkersProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowClickMarkers), true);
+    public static readonly StyledProperty<bool> ShowPopMarkersProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowPopMarkers), true);
+    public static readonly StyledProperty<bool> ShowDecrackleMarkersProperty =
+        AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowDecrackleMarkers), true);
+    public static readonly StyledProperty<double> EventOverlayOpacityProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(EventOverlayOpacity), 0.75d);
+    public static readonly StyledProperty<double> NoiseProfileOpacityProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(NoiseProfileOpacity), 0.6d);
+    public static readonly StyledProperty<int> SelectedEventIndexProperty =
+        AvaloniaProperty.Register<WaveformView, int>(nameof(SelectedEventIndex), 0);
     public static readonly StyledProperty<double> ZoomFactorProperty =
         AvaloniaProperty.Register<WaveformView, double>(nameof(ZoomFactor), 1d);
     public static readonly StyledProperty<double> ViewOffsetProperty =
@@ -61,6 +71,42 @@ public sealed class WaveformView : Control
         set => SetValue(ShowNoiseProfileOverlayProperty, value);
     }
 
+    public bool ShowClickMarkers
+    {
+        get => GetValue(ShowClickMarkersProperty);
+        set => SetValue(ShowClickMarkersProperty, value);
+    }
+
+    public bool ShowPopMarkers
+    {
+        get => GetValue(ShowPopMarkersProperty);
+        set => SetValue(ShowPopMarkersProperty, value);
+    }
+
+    public bool ShowDecrackleMarkers
+    {
+        get => GetValue(ShowDecrackleMarkersProperty);
+        set => SetValue(ShowDecrackleMarkersProperty, value);
+    }
+
+    public double EventOverlayOpacity
+    {
+        get => GetValue(EventOverlayOpacityProperty);
+        set => SetValue(EventOverlayOpacityProperty, value);
+    }
+
+    public double NoiseProfileOpacity
+    {
+        get => GetValue(NoiseProfileOpacityProperty);
+        set => SetValue(NoiseProfileOpacityProperty, value);
+    }
+
+    public int SelectedEventIndex
+    {
+        get => GetValue(SelectedEventIndexProperty);
+        set => SetValue(SelectedEventIndexProperty, value);
+    }
+
     public double ZoomFactor
     {
         get => GetValue(ZoomFactorProperty);
@@ -80,6 +126,12 @@ public sealed class WaveformView : Control
         NoiseProfileProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ShowEventOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ShowNoiseProfileOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ShowClickMarkersProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ShowPopMarkersProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ShowDecrackleMarkersProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        EventOverlayOpacityProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        NoiseProfileOpacityProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        SelectedEventIndexProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ZoomFactorProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ViewOffsetProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
     }
@@ -199,6 +251,13 @@ public sealed class WaveformView : Control
 
         var height = bounds.Height;
         var endFrame = startFrame + visibleFrames;
+        var eventOpacity = Math.Clamp(EventOverlayOpacity, 0.1d, 1d);
+        var clickPen = CreatePenWithOpacity(Colors.OrangeRed, eventOpacity);
+        var popPen = CreatePenWithOpacity(Colors.MediumPurple, eventOpacity);
+        var decracklePen = CreatePenWithOpacity(Colors.Gold, eventOpacity);
+        var selectedFrame = SelectedEventIndex >= 0 && SelectedEventIndex < events.Count
+            ? events[SelectedEventIndex].Frame
+            : -1;
         foreach (var detectedEvent in events)
         {
             if (detectedEvent.Frame < startFrame || detectedEvent.Frame >= endFrame)
@@ -206,14 +265,24 @@ public sealed class WaveformView : Control
                 continue;
             }
 
+            if (!ShouldRenderEvent(detectedEvent.Type))
+            {
+                continue;
+            }
+
             var x = bounds.X + ((detectedEvent.Frame - startFrame) / (double)visibleFrames) * bounds.Width;
             var pen = detectedEvent.Type switch
             {
-                DetectedEventType.Pop => PopPen,
-                DetectedEventType.Decrackle => DecracklePen,
-                _ => ClickPen
+                DetectedEventType.Pop => popPen,
+                DetectedEventType.Decrackle => decracklePen,
+                _ => clickPen
             };
             context.DrawLine(pen, new Point(x, bounds.Y), new Point(x, bounds.Y + height));
+
+            if (detectedEvent.Frame == selectedFrame)
+            {
+                context.DrawLine(SelectedEventPen, new Point(x, bounds.Y), new Point(x, bounds.Y + height));
+            }
         }
     }
 
@@ -248,9 +317,30 @@ public sealed class WaveformView : Control
             points.Add(new Point(x, y));
         }
 
+        var noiseOpacity = Math.Clamp(NoiseProfileOpacity, 0.1d, 1d);
+        var pen = CreatePenWithOpacity(Colors.LightGray, noiseOpacity, dashed: true);
         for (var i = 1; i < points.Count; i++)
         {
-            context.DrawLine(NoiseProfilePen, points[i - 1], points[i]);
+            context.DrawLine(pen, points[i - 1], points[i]);
         }
+    }
+
+    private bool ShouldRenderEvent(DetectedEventType type)
+    {
+        return type switch
+        {
+            DetectedEventType.Pop => ShowPopMarkers,
+            DetectedEventType.Decrackle => ShowDecrackleMarkers,
+            _ => ShowClickMarkers
+        };
+    }
+
+    private static Pen CreatePenWithOpacity(Color color, double opacity, bool dashed = false)
+    {
+        var alpha = (byte)Math.Clamp(opacity * 255, 0, 255);
+        var brush = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
+        return dashed
+            ? new Pen(brush, 1, dashStyle: new DashStyle(new[] { 4d, 4d }, 0))
+            : new Pen(brush, 1);
     }
 }

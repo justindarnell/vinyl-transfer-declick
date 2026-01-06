@@ -105,7 +105,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         out float noiseFloor,
         out List<DetectedEvent> detectedEvents)
     {
-        var estimatedNoiseFloor = EstimateNoiseFloor(input);
+        var estimatedNoiseFloor = AudioAnalysis.EstimateNoiseFloor(input);
         noiseFloor = settings.UseAutoMode ? estimatedNoiseFloor : settings.ManualMode.NoiseFloor;
 
         var clickThreshold = settings.UseAutoMode
@@ -134,12 +134,16 @@ public sealed class DspAudioProcessor : IAudioProcessor
             var useSpectralNoiseReduction = settings.UseAutoMode
                 ? settings.AutoMode.UseSpectralNoiseReduction
                 : settings.ManualMode.UseSpectralNoiseReduction;
+            var maskingStrength = settings.UseAutoMode
+                ? settings.AutoMode.SpectralMaskingStrength
+                : settings.ManualMode.SpectralMaskingStrength;
             ApplySpectralNoiseReduction(
                 samples,
                 input.SampleRate,
                 input.Channels,
                 reductionAmount,
-                applyGentleFlooring: useSpectralNoiseReduction);
+                applyGentleFlooring: useSpectralNoiseReduction,
+                maskingStrength: maskingStrength);
         }
 
         var useMedianRepair = settings.UseAutoMode
@@ -382,23 +386,6 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return (float)(20 * Math.Log10((inputRms + 1e-6f) / (diffRms + 1e-6f)));
     }
 
-    private static float EstimateNoiseFloor(AudioBuffer buffer)
-    {
-        if (buffer is null)
-        {
-            throw new ArgumentNullException(nameof(buffer));
-        }
-
-        if (buffer.Samples.Length == 0)
-        {
-            return 0f;
-        }
-
-        var segmentRms = ComputeSegmentRms(buffer);
-        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
-        return quietSegments.Length == 0 ? 0f : quietSegments.Average();
-    }
-
     internal static List<float> ComputeSegmentRms(AudioBuffer buffer)
     {
         var samples = buffer.Samples;
@@ -524,7 +511,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         int sampleRate,
         int channels,
         float reductionAmount,
-        bool applyGentleFlooring)
+        bool applyGentleFlooring,
+        float maskingStrength)
     {
         // Make frame size adaptive based on sample rate to maintain consistent time resolution.
         var targetFrameSize = (int)(sampleRate * AdaptiveWindowTargetMs / 1000.0);
@@ -547,9 +535,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         var effectiveReduction = applyGentleFlooring ? reduction * GentleFlooringScale : reduction;
+        var clampedMaskingStrength = Math.Clamp(maskingStrength, 0f, 1f);
         for (var channel = 0; channel < channels; channel++)
         {
-            ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, effectiveReduction);
+            ApplySpectralNoiseReductionChannel(samples, channels, channel, frameSize, hopSize, effectiveReduction, clampedMaskingStrength);
         }
     }
 
@@ -559,7 +548,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         int channel,
         int frameSize,
         int hopSize,
-        float reductionAmount)
+        float reductionAmount,
+        float maskingStrength)
     {
         var totalSamplesPerChannel = samples.Length / channels;
         if (totalSamplesPerChannel <= 0)
@@ -623,21 +613,29 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
 
             var noiseProfile = EstimateNoiseProfile(spectra, frameRms);
+            var smoothedNoiseProfile = SmoothProfile(noiseProfile, 6);
+            var maskingScale = 0.2f + (0.6f * maskingStrength);
 
             // Synthesis: apply noise reduction, inverse FFT, and overlap-add.
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var spectrum = spectra[frame];
+                // Per-frame spectral smoothing is used for spectral masking calculation.
+                // This local smoothing adapts to the current frame's spectrum, allowing the
+                // masking to preserve signal components that are close in frequency to strong
+                // tonal content. This is in addition to the global noise profile smoothing.
+                var smoothedSpectrum = SmoothSpectrumMagnitudes(spectrum, 4);
                 for (var i = 0; i < spectrum.Length; i++)
                 {
                     var magnitude = (float)spectrum[i].Magnitude;
-                    var noise = noiseProfile[i];
+                    var noise = smoothedNoiseProfile[i];
                     if (magnitude <= 0f)
                     {
                         continue;
                     }
 
-                    var reduced = MathF.Max(magnitude - noise * reductionAmount, magnitude * minGain);
+                    var maskedNoise = MathF.Min(noise, smoothedSpectrum[i] * maskingScale);
+                    var reduced = MathF.Max(magnitude - maskedNoise * reductionAmount, magnitude * minGain);
                     var targetGain = reduced / magnitude;
                     var smoothedGain = (TemporalSmoothingFactor * previousGain[i]) + ((1f - TemporalSmoothingFactor) * targetGain);
                     previousGain[i] = smoothedGain;
@@ -706,6 +704,63 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         return profile;
+    }
+
+    private static float[] SmoothProfile(float[] profile, int radius)
+    {
+        if (profile.Length == 0)
+        {
+            return Array.Empty<float>();
+        }
+
+        var smoothed = new float[profile.Length];
+        for (var i = 0; i < profile.Length; i++)
+        {
+            var start = Math.Max(0, i - radius);
+            var end = Math.Min(profile.Length - 1, i + radius);
+            float total = 0;
+            for (var j = start; j <= end; j++)
+            {
+                total += profile[j];
+            }
+
+            var count = end - start + 1;
+            smoothed[i] = count > 0 ? total / count : profile[i];
+        }
+
+        return smoothed;
+    }
+
+    private static float[] SmoothSpectrumMagnitudes(Complex[] spectrum, int radius)
+    {
+        if (spectrum.Length == 0)
+        {
+            return Array.Empty<float>();
+        }
+
+        var magnitudes = new float[spectrum.Length];
+        for (var i = 0; i < spectrum.Length; i++)
+        {
+            magnitudes[i] = (float)spectrum[i].Magnitude;
+        }
+
+        // Inline smoothing logic to avoid calling SmoothProfile (which would create another copy)
+        var smoothed = new float[spectrum.Length];
+        for (var i = 0; i < magnitudes.Length; i++)
+        {
+            var start = Math.Max(0, i - radius);
+            var end = Math.Min(magnitudes.Length - 1, i + radius);
+            float total = 0;
+            for (var j = start; j <= end; j++)
+            {
+                total += magnitudes[j];
+            }
+
+            var count = end - start + 1;
+            smoothed[i] = count > 0 ? total / count : magnitudes[i];
+        }
+
+        return smoothed;
     }
 
     private static float[] BuildHannWindow(int size)
@@ -787,16 +842,20 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
         }
 
-        var lowMedian = Median(lowBand);
-        var midMedian = Median(midBand);
-        var highMedian = Median(highBand);
+        var (lowThresholds, midThresholds, highThresholds) = ComputeAdaptiveBandThresholds(
+            lowBand,
+            midBand,
+            highBand,
+            hopSize,
+            sampleRate,
+            frameCount);
 
         var flags = new bool[frameCount];
         for (var frame = 0; frame < frameCount; frame++)
         {
-            var isTransient = lowBand[frame] > lowMedian * 5f ||
-                              midBand[frame] > midMedian * 5f ||
-                              highBand[frame] > highMedian * 6f;
+            var isTransient = lowBand[frame] > lowThresholds[frame] ||
+                              midBand[frame] > midThresholds[frame] ||
+                              highBand[frame] > highThresholds[frame];
             flags[frame] = isTransient;
         }
 
@@ -841,6 +900,94 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         return perSampleFlags;
+    }
+
+    private static (float[] lowThresholds, float[] midThresholds, float[] highThresholds) ComputeAdaptiveBandThresholds(
+        float[] lowBand,
+        float[] midBand,
+        float[] highBand,
+        int hopSize,
+        int sampleRate,
+        int frameCount)
+    {
+        var windowDurationSeconds = 1.0;
+        var framesPerSecond = sampleRate / (double)hopSize;
+        var windowSize = Math.Max(8, (int)Math.Round(framesPerSecond * windowDurationSeconds));
+        var lowThresholds = new float[frameCount];
+        var midThresholds = new float[frameCount];
+        var highThresholds = new float[frameCount];
+
+        for (var start = 0; start < frameCount; start += windowSize)
+        {
+            var end = Math.Min(frameCount, start + windowSize);
+            var lowThreshold = Percentile(lowBand, start, end, 0.96f);
+            var midThreshold = Percentile(midBand, start, end, 0.96f);
+            var highThreshold = Percentile(highBand, start, end, 0.97f);
+
+            for (var frame = start; frame < end; frame++)
+            {
+                lowThresholds[frame] = lowThreshold;
+                midThresholds[frame] = midThreshold;
+                highThresholds[frame] = highThreshold;
+            }
+        }
+
+        return (lowThresholds, midThresholds, highThresholds);
+    }
+
+    private static float Percentile(float[] values, int start, int end, float percentile)
+    {
+        if (end <= start)
+        {
+            return 0f;
+        }
+
+        var length = end - start;
+        var buffer = new float[length];
+        Array.Copy(values, start, buffer, 0, length);
+        
+        var clamped = Math.Clamp(percentile, 0f, 1f);
+        var targetIndex = (int)MathF.Floor((buffer.Length - 1) * clamped);
+        
+        // Use QuickSelect for O(n) average case performance instead of O(n log n) sort
+        return QuickSelect(buffer, 0, buffer.Length - 1, targetIndex);
+    }
+
+    private static float QuickSelect(float[] array, int left, int right, int k)
+    {
+        while (left < right)
+        {
+            var pivotIndex = Partition(array, left, right);
+            if (pivotIndex == k)
+            {
+                return array[k];
+            }
+            else if (k < pivotIndex)
+            {
+                right = pivotIndex - 1;
+            }
+            else
+            {
+                left = pivotIndex + 1;
+            }
+        }
+        return array[left];
+    }
+
+    private static int Partition(float[] array, int left, int right)
+    {
+        var pivot = array[right];
+        var i = left;
+        for (var j = left; j < right; j++)
+        {
+            if (array[j] <= pivot)
+            {
+                (array[i], array[j]) = (array[j], array[i]);
+                i++;
+            }
+        }
+        (array[i], array[right]) = (array[right], array[i]);
+        return i;
     }
 
     private static float Median(IReadOnlyList<float> values)

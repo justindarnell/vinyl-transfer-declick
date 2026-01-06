@@ -47,10 +47,28 @@ public static class AudioAnalysis
             NoiseReductionAmount: noiseReduction,
             UseMedianRepair: true,
             UseSpectralNoiseReduction: true,
+            SpectralMaskingStrength: 0.5f,
             UseMultiBandTransientDetection: true,
             UseDecrackle: true,
             DecrackleIntensity: 0.4f,
             UseBandLimitedInterpolation: true);
+    }
+
+    public static float EstimateNoiseFloor(AudioBuffer buffer)
+    {
+        if (buffer is null)
+        {
+            throw new ArgumentNullException(nameof(buffer));
+        }
+
+        if (buffer.Samples.Length == 0)
+        {
+            return 0f;
+        }
+
+        var segmentRms = DspAudioProcessor.ComputeSegmentRms(buffer);
+        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
+        return quietSegments.Length == 0 ? 0f : quietSegments.Average();
     }
 
     private static float GetPercentile(float[] absSamples, float percentile)
@@ -114,8 +132,7 @@ public static class AudioAnalysis
         var clickThreshold = Median(clickThresholds);
         var popThreshold = Median(popThresholds);
 
-        var quietSegments = segmentRms.OrderBy(x => x).Take(Math.Max(1, segmentRms.Count / 5)).ToArray();
-        var noiseFloor = quietSegments.Length == 0 ? 0f : quietSegments.Average();
+        var noiseFloor = EstimateNoiseFloor(buffer);
 
         var overallRms = segmentRms.Count == 0 ? 0f : segmentRms.Average();
         var snrDb = noiseFloor > 0f ? (float)(20 * Math.Log10(overallRms / noiseFloor)) : 0f;

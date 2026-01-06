@@ -74,6 +74,17 @@ public sealed record SettingsData
     public bool UseBandLimitedInterpolation { get; init; } = true;
     public bool ShowEventOverlay { get; init; } = true;
     public bool ShowNoiseProfileOverlay { get; init; } = true;
+    public bool ShowClickMarkers { get; init; } = true;
+    public bool ShowPopMarkers { get; init; } = true;
+    public bool ShowDecrackleMarkers { get; init; } = true;
+    public double EventOverlayOpacity { get; init; } = 0.75;
+    public double NoiseProfileOpacity { get; init; } = 0.6;
     public double ZoomFactor { get; init; } = 1;
     public double ViewOffset { get; init; } = 0;
+    public double SpectralMaskingStrength { get; init; } = 0.5;
+    public double ScrubPosition { get; init; } = 0;
+    public int SelectedEventIndex { get; init; } = 0;
+    public double EventPreviewMs { get; init; } = 180;
+    public bool LoopPreview { get; init; } = false;
+    public int LoopRepeats { get; init; } = 3;
 }
