@@ -46,6 +46,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private double _popIntensity = 0.5;
     private double _noiseFloorDb = -60;
     private double _noiseReductionAmount = 0.5;
+    private double _spectralMaskingStrength = 0.5;
     private bool _useMedianRepair = true;
     private bool _useSpectralNoiseReduction = true;
     private bool _useMultiBandTransientDetection = true;
@@ -54,9 +55,20 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private bool _useBandLimitedInterpolation = true;
     private bool _showEventOverlay = true;
     private bool _showNoiseProfileOverlay = true;
+    private bool _showClickMarkers = true;
+    private bool _showPopMarkers = true;
+    private bool _showDecrackleMarkers = true;
+    private double _eventOverlayOpacity = 0.75;
+    private double _noiseProfileOpacity = 0.6;
     private double _zoomFactor = 1;
     private double _viewOffset;
     private PresetDefinition? _selectedPreset;
+    private double _scrubPosition;
+    private IReadOnlyList<string> _detectedEventOptions = Array.Empty<string>();
+    private int _selectedEventIndex;
+    private double _eventPreviewMs = 180;
+    private bool _loopPreview;
+    private int _loopRepeats = 3;
 
     public MainWindowViewModel()
     {
@@ -74,9 +86,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         RecommendSettingsCommand = ReactiveCommand.CreateFromTask(RecommendSettingsAsync, canProcess);
         PreviewCommand = ReactiveCommand.Create(HandlePreview, canPreview);
         PlayPreviewCommand = ReactiveCommand.Create(HandlePlayPreview, canProcess);
+        PlayFromPositionCommand = ReactiveCommand.Create(HandlePlayFromPosition, canProcess);
+        PlayEventCommand = ReactiveCommand.Create(HandlePlayEventPreview, canProcess);
         StopPreviewCommand = ReactiveCommand.Create(HandleStopPreview, this.WhenAnyValue(vm => vm.IsPlaying));
         ExportProcessedCommand = ReactiveCommand.CreateFromTask(ExportProcessedAsync, canExportProcessed);
         ExportDifferenceCommand = ReactiveCommand.CreateFromTask(ExportDifferenceAsync, canExportDifference);
+        ExportEventsCommand = ReactiveCommand.CreateFromTask(ExportEventsAsync, canProcess);
 
         ImportWavCommand.ThrownExceptions.Merge(AutoCleanCommand.ThrownExceptions)
             .Merge(RecommendSettingsCommand.ThrownExceptions)
@@ -84,6 +99,9 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             .Merge(ExportDifferenceCommand.ThrownExceptions)
             .Merge(PreviewCommand.ThrownExceptions)
             .Merge(PlayPreviewCommand.ThrownExceptions)
+            .Merge(PlayFromPositionCommand.ThrownExceptions)
+            .Merge(PlayEventCommand.ThrownExceptions)
+            .Merge(ExportEventsCommand.ThrownExceptions)
             .Merge(StopPreviewCommand.ThrownExceptions)
             .Subscribe(ex => StatusMessage = $"Status: {ex.Message}")
             .DisposeWith(_disposables);
@@ -111,11 +129,17 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     public ReactiveCommand<Unit, Unit> PlayPreviewCommand { get; }
 
+    public ReactiveCommand<Unit, Unit> PlayFromPositionCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> PlayEventCommand { get; }
+
     public ReactiveCommand<Unit, Unit> StopPreviewCommand { get; }
 
     public ReactiveCommand<Unit, Unit> ExportProcessedCommand { get; }
 
     public ReactiveCommand<Unit, Unit> ExportDifferenceCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> ExportEventsCommand { get; }
 
     public string StatusMessage
     {
@@ -179,6 +203,16 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         set
         {
             this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value);
+            SaveSettings();
+        }
+    }
+
+    public double SpectralMaskingStrength
+    {
+        get => _spectralMaskingStrength;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _spectralMaskingStrength, value);
             SaveSettings();
         }
     }
@@ -263,6 +297,56 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         }
     }
 
+    public bool ShowClickMarkers
+    {
+        get => _showClickMarkers;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showClickMarkers, value);
+            SaveSettings();
+        }
+    }
+
+    public bool ShowPopMarkers
+    {
+        get => _showPopMarkers;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showPopMarkers, value);
+            SaveSettings();
+        }
+    }
+
+    public bool ShowDecrackleMarkers
+    {
+        get => _showDecrackleMarkers;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showDecrackleMarkers, value);
+            SaveSettings();
+        }
+    }
+
+    public double EventOverlayOpacity
+    {
+        get => _eventOverlayOpacity;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _eventOverlayOpacity, value);
+            SaveSettings();
+        }
+    }
+
+    public double NoiseProfileOpacity
+    {
+        get => _noiseProfileOpacity;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _noiseProfileOpacity, value);
+            SaveSettings();
+        }
+    }
+
     public double ZoomFactor
     {
         get => _zoomFactor;
@@ -275,10 +359,74 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _viewOffset, value);
     }
 
+    public double ScrubPosition
+    {
+        get => _scrubPosition;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _scrubPosition, value);
+            this.RaisePropertyChanged(nameof(ScrubTimecode));
+            SaveSettings();
+        }
+    }
+
+    public string ScrubTimecode => FormatScrubTime();
+
+    public IReadOnlyList<string> DetectedEventOptions
+    {
+        get => _detectedEventOptions;
+        private set => this.RaiseAndSetIfChanged(ref _detectedEventOptions, value);
+    }
+
+    public int SelectedEventIndex
+    {
+        get => _selectedEventIndex;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedEventIndex, value);
+            SaveSettings();
+        }
+    }
+
+    public double EventPreviewMs
+    {
+        get => _eventPreviewMs;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _eventPreviewMs, value);
+            SaveSettings();
+        }
+    }
+
+    public bool LoopPreview
+    {
+        get => _loopPreview;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _loopPreview, value);
+            SaveSettings();
+        }
+    }
+
+    public int LoopRepeats
+    {
+        get => _loopRepeats;
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 8);
+            this.RaiseAndSetIfChanged(ref _loopRepeats, clamped);
+            SaveSettings();
+        }
+    }
+
     public IReadOnlyList<DetectedEvent> DetectedEvents
     {
         get => _detectedEvents;
-        private set => this.RaiseAndSetIfChanged(ref _detectedEvents, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _detectedEvents, value);
+            UpdateDetectedEventOptions();
+        }
     }
 
     public NoiseProfile? NoiseProfile
@@ -322,6 +470,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _inputBuffer, value);
             this.RaisePropertyChanged(nameof(DisplayBuffer));
+            this.RaisePropertyChanged(nameof(ScrubTimecode));
         }
     }
 
@@ -332,6 +481,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _processedBuffer, value);
             this.RaisePropertyChanged(nameof(DisplayBuffer));
+            this.RaisePropertyChanged(nameof(ScrubTimecode));
         }
     }
 
@@ -371,6 +521,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         DetectedEvents = Array.Empty<DetectedEvent>();
         NoiseProfile = AudioAnalysis.BuildNoiseProfile(buffer);
         _isPreviewingProcessed = false;
+        ScrubPosition = 0;
 
         StatusMessage = $"Status: Loaded {Path.GetFileName(path)} · {buffer.SampleRate} Hz · {buffer.Channels} ch · {FormatDuration(buffer)}.";
     }
@@ -463,7 +614,47 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             return;
         }
 
-        StartPlayback();
+        StartPlayback(DisplayBuffer, resumeFromPosition: false);
+    }
+
+    private void HandlePlayFromPosition()
+    {
+        if (DisplayBuffer is null)
+        {
+            StatusMessage = "Status: Load audio before playing.";
+            return;
+        }
+
+        var buffer = DisplayBuffer;
+        var startFrame = (long)Math.Round(Math.Clamp(ScrubPosition, 0d, 1d) * buffer.FrameCount);
+        _playbackPosition = startFrame;
+        StartPlayback(buffer, resumeFromPosition: true);
+    }
+
+    private void HandlePlayEventPreview()
+    {
+        if (InputBuffer is null)
+        {
+            StatusMessage = "Status: Load audio before playing.";
+            return;
+        }
+
+        if (DetectedEvents.Count == 0)
+        {
+            StatusMessage = "Status: No detected events available.";
+            return;
+        }
+
+        if (SelectedEventIndex < 0 || SelectedEventIndex >= DetectedEvents.Count)
+        {
+            StatusMessage = "Status: Select an event to preview.";
+            return;
+        }
+
+        var selectedEvent = DetectedEvents[SelectedEventIndex];
+        var previewBuffer = BuildEventPreviewBuffer(InputBuffer, selectedEvent.Frame);
+        StartPlayback(previewBuffer, resumeFromPosition: false);
+        StatusMessage = $"Status: Previewing event {SelectedEventIndex + 1}/{DetectedEvents.Count}.";
     }
 
     private void HandleStopPreview()
@@ -537,6 +728,43 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         StatusMessage = $"Status: Exported difference WAV to {path}.";
     }
 
+    private async Task ExportEventsAsync()
+    {
+        if (InputBuffer is null || DetectedEvents.Count == 0)
+        {
+            StatusMessage = "Status: No detected events to export.";
+            return;
+        }
+
+        var (directory, defaultName) = BuildDefaultExportName("events");
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export detected events",
+            InitialFileName = $"{Path.GetFileNameWithoutExtension(defaultName)}.json",
+            Directory = directory,
+            Filters =
+            {
+                new FileDialogFilter { Name = "JSON files", Extensions = { "json" } },
+                new FileDialogFilter { Name = "CSV files", Extensions = { "csv" } }
+            }
+        };
+
+        var path = await SaveFileInteraction.Handle(dialog);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusMessage = "Status: Export cancelled.";
+            return;
+        }
+
+        StatusMessage = "Status: Exporting detected events...";
+        var exportService = new DetectedEventExportService();
+        await Task.Run(() =>
+        {
+            exportService.Export(path, InputBuffer, DetectedEvents);
+        });
+        StatusMessage = $"Status: Exported detected events to {path}.";
+    }
+
     private ProcessingSettings BuildProcessingSettings()
     {
         var manualSettings = new ManualModeSettings(
@@ -548,6 +776,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
             UseSpectralNoiseReduction: UseSpectralNoiseReduction,
+            SpectralMaskingStrength: (float)SpectralMaskingStrength,
             UseMultiBandTransientDetection: UseMultiBandTransientDetection,
             UseDecrackle: UseDecrackle,
             DecrackleIntensity: (float)DecrackleIntensity,
@@ -559,6 +788,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
             UseSpectralNoiseReduction: UseSpectralNoiseReduction,
+            SpectralMaskingStrength: (float)SpectralMaskingStrength,
             UseMultiBandTransientDetection: UseMultiBandTransientDetection,
             UseDecrackle: UseDecrackle,
             DecrackleIntensity: (float)DecrackleIntensity,
@@ -593,6 +823,48 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         return duration.ToString(duration.TotalHours >= 1 ? "h\\:mm\\:ss" : "m\\:ss");
     }
 
+    private string FormatScrubTime()
+    {
+        var buffer = DisplayBuffer;
+        if (buffer is null || buffer.FrameCount == 0 || buffer.SampleRate == 0)
+        {
+            return "0:00";
+        }
+
+        var clamped = Math.Clamp(ScrubPosition, 0d, 1d);
+        var frame = clamped * buffer.FrameCount;
+        var seconds = frame / buffer.SampleRate;
+        var duration = TimeSpan.FromSeconds(seconds);
+        return duration.ToString(duration.TotalHours >= 1 ? "h\\:mm\\:ss" : "m\\:ss");
+    }
+
+    private void UpdateDetectedEventOptions()
+    {
+        if (InputBuffer is null || DetectedEvents.Count == 0)
+        {
+            DetectedEventOptions = Array.Empty<string>();
+            SelectedEventIndex = 0;
+            return;
+        }
+
+        var options = new List<string>(DetectedEvents.Count);
+        var sampleRate = InputBuffer.SampleRate;
+        for (var i = 0; i < DetectedEvents.Count; i++)
+        {
+            var detectedEvent = DetectedEvents[i];
+            var seconds = detectedEvent.Frame / (double)sampleRate;
+            var timecode = TimeSpan.FromSeconds(seconds).ToString("m\\:ss\\.fff");
+            var label = $"{timecode} · {detectedEvent.Type} · {detectedEvent.Amplitude:F3}";
+            options.Add(label);
+        }
+
+        DetectedEventOptions = options;
+        if (SelectedEventIndex >= DetectedEventOptions.Count)
+        {
+            SelectedEventIndex = 0;
+        }
+    }
+
     private (string? directory, string fileName) BuildDefaultExportName(string suffix)
     {
         if (!string.IsNullOrWhiteSpace(_loadedPath))
@@ -622,6 +894,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         PopIntensity = settings.PopIntensity;
         NoiseFloorDb = settings.NoiseFloorDb;
         NoiseReductionAmount = settings.NoiseReductionAmount;
+        SpectralMaskingStrength = settings.SpectralMaskingStrength;
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
         UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
@@ -630,8 +903,18 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         UseBandLimitedInterpolation = settings.UseBandLimitedInterpolation;
         ShowEventOverlay = settings.ShowEventOverlay;
         ShowNoiseProfileOverlay = settings.ShowNoiseProfileOverlay;
+        ShowClickMarkers = settings.ShowClickMarkers;
+        ShowPopMarkers = settings.ShowPopMarkers;
+        ShowDecrackleMarkers = settings.ShowDecrackleMarkers;
+        EventOverlayOpacity = settings.EventOverlayOpacity;
+        NoiseProfileOpacity = settings.NoiseProfileOpacity;
         ZoomFactor = settings.ZoomFactor;
         ViewOffset = settings.ViewOffset;
+        ScrubPosition = settings.ScrubPosition;
+        SelectedEventIndex = settings.SelectedEventIndex;
+        EventPreviewMs = settings.EventPreviewMs;
+        LoopPreview = settings.LoopPreview;
+        LoopRepeats = settings.LoopRepeats;
         _suppressSettingsSave = false;
     }
 
@@ -650,6 +933,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             PopIntensity = PopIntensity,
             NoiseFloorDb = NoiseFloorDb,
             NoiseReductionAmount = NoiseReductionAmount,
+            SpectralMaskingStrength = SpectralMaskingStrength,
             UseMedianRepair = UseMedianRepair,
             UseSpectralNoiseReduction = UseSpectralNoiseReduction,
             UseMultiBandTransientDetection = UseMultiBandTransientDetection,
@@ -658,8 +942,18 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             UseBandLimitedInterpolation = UseBandLimitedInterpolation,
             ShowEventOverlay = ShowEventOverlay,
             ShowNoiseProfileOverlay = ShowNoiseProfileOverlay,
+            ShowClickMarkers = ShowClickMarkers,
+            ShowPopMarkers = ShowPopMarkers,
+            ShowDecrackleMarkers = ShowDecrackleMarkers,
+            EventOverlayOpacity = EventOverlayOpacity,
+            NoiseProfileOpacity = NoiseProfileOpacity,
             ZoomFactor = ZoomFactor,
-            ViewOffset = ViewOffset
+            ViewOffset = ViewOffset,
+            ScrubPosition = ScrubPosition,
+            SelectedEventIndex = SelectedEventIndex,
+            EventPreviewMs = EventPreviewMs,
+            LoopPreview = LoopPreview,
+            LoopRepeats = LoopRepeats
         };
 
         _ = Task.Run(() =>
@@ -687,6 +981,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         NoiseReductionAmount = settings.NoiseReductionAmount;
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
+        SpectralMaskingStrength = settings.SpectralMaskingStrength;
         UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
         UseDecrackle = settings.UseDecrackle;
         DecrackleIntensity = settings.DecrackleIntensity;
@@ -706,6 +1001,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         NoiseReductionAmount = preset.NoiseReductionAmount;
         UseMedianRepair = preset.UseMedianRepair;
         UseSpectralNoiseReduction = preset.UseSpectralNoiseReduction;
+        SpectralMaskingStrength = preset.SpectralMaskingStrength;
         UseMultiBandTransientDetection = preset.UseMultiBandTransientDetection;
         UseDecrackle = preset.UseDecrackle;
         DecrackleIntensity = preset.DecrackleIntensity;
@@ -729,6 +1025,11 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             return;
         }
 
+        StartPlayback(buffer, resumeFromPosition);
+    }
+
+    private void StartPlayback(AudioBuffer buffer, bool resumeFromPosition)
+    {
         StopPlayback(updateStatus: false);
 
         if (!resumeFromPosition)
@@ -744,13 +1045,14 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         // Stream audio in chunks to avoid allocating large byte arrays for entire buffer
         const int chunkSizeInSamples = 4096;
-        long totalSamples = buffer.Samples.Length;
+        long totalFrames = buffer.FrameCount;
         int sampleSizeInBytes = sizeof(float);
         var chunkBytes = new byte[chunkSizeInSamples * sampleSizeInBytes];
 
-        // Clamp playback position to valid range
-        long sampleOffset = Math.Clamp(_playbackPosition, 0, totalSamples);
-        
+        var startFrame = Math.Clamp(_playbackPosition, 0, totalFrames);
+        long sampleOffset = startFrame * buffer.Channels;
+        long totalSamples = buffer.Samples.Length;
+
         while (sampleOffset < totalSamples)
         {
             int samplesThisChunk = (int)Math.Min(chunkSizeInSamples, totalSamples - sampleOffset);
@@ -770,12 +1072,11 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _outputDevice = new WaveOutEvent();
         _playbackStoppedHandler = (_, _) =>
         {
-            // Check if device is disposed before accessing
             if (_outputDevice is null)
             {
                 return;
             }
-            
+
             IsPlaying = false;
             StopPlayback(updateStatus: true, stopDevice: false);
         };
@@ -809,6 +1110,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         var samplesPlayed = bytesPlayed / bytesPerSample;
         
         _playbackPosition = samplesPlayed;
+        if (DisplayBuffer is not null && DisplayBuffer.FrameCount > 0)
+        {
+            ScrubPosition = Math.Clamp(samplesPlayed / (double)DisplayBuffer.FrameCount, 0d, 1d);
+        }
     }
 
     private void StopPlayback(bool updateStatus, bool stopDevice = true)
@@ -852,6 +1157,31 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         StopPlayback(updateStatus: false);
         _disposables.Dispose();
     }
+
+    private AudioBuffer BuildEventPreviewBuffer(AudioBuffer buffer, int eventFrame)
+    {
+        var sampleRate = buffer.SampleRate;
+        var channels = buffer.Channels;
+        var previewFrames = (int)Math.Max(64, Math.Round(EventPreviewMs * sampleRate / 1000d));
+        var startFrame = Math.Clamp(eventFrame - (previewFrames / 2), 0, Math.Max(0, buffer.FrameCount - previewFrames));
+        var frames = Math.Min(previewFrames, buffer.FrameCount - startFrame);
+        var preview = new float[frames * channels];
+        Array.Copy(buffer.Samples, startFrame * channels, preview, 0, preview.Length);
+
+        if (!LoopPreview || LoopRepeats <= 1)
+        {
+            return new AudioBuffer(preview, sampleRate, channels);
+        }
+
+        var totalFrames = frames * LoopRepeats;
+        var repeated = new float[totalFrames * channels];
+        for (var i = 0; i < LoopRepeats; i++)
+        {
+            Array.Copy(preview, 0, repeated, i * preview.Length, preview.Length);
+        }
+
+        return new AudioBuffer(repeated, sampleRate, channels);
+    }
 }
 
 public sealed record PresetDefinition(
@@ -864,6 +1194,7 @@ public sealed record PresetDefinition(
     double NoiseReductionAmount,
     bool UseMedianRepair,
     bool UseSpectralNoiseReduction,
+    double SpectralMaskingStrength,
     bool UseMultiBandTransientDetection,
     bool UseDecrackle,
     double DecrackleIntensity,
@@ -883,6 +1214,7 @@ public sealed record PresetDefinition(
                 NoiseReductionAmount: 0.35,
                 UseMedianRepair: true,
                 UseSpectralNoiseReduction: true,
+                SpectralMaskingStrength: 0.45,
                 UseMultiBandTransientDetection: true,
                 UseDecrackle: true,
                 DecrackleIntensity: 0.35,
@@ -897,6 +1229,7 @@ public sealed record PresetDefinition(
                 NoiseReductionAmount: 0.55,
                 UseMedianRepair: true,
                 UseSpectralNoiseReduction: true,
+                SpectralMaskingStrength: 0.55,
                 UseMultiBandTransientDetection: true,
                 UseDecrackle: true,
                 DecrackleIntensity: 0.55,
@@ -911,6 +1244,7 @@ public sealed record PresetDefinition(
                 NoiseReductionAmount: 0.6,
                 UseMedianRepair: false,
                 UseSpectralNoiseReduction: true,
+                SpectralMaskingStrength: 0.6,
                 UseMultiBandTransientDetection: true,
                 UseDecrackle: true,
                 DecrackleIntensity: 0.65,
@@ -925,6 +1259,7 @@ public sealed record PresetDefinition(
                 NoiseReductionAmount: 0.25,
                 UseMedianRepair: true,
                 UseSpectralNoiseReduction: false,
+                SpectralMaskingStrength: 0.35,
                 UseMultiBandTransientDetection: true,
                 UseDecrackle: false,
                 DecrackleIntensity: 0.3,

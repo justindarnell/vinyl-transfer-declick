@@ -63,12 +63,44 @@
               <Button Content="Play Preview"
                       Command="{Binding PlayPreviewCommand}"
                       ToolTip.Tip="Play the currently selected preview audio." />
+              <Button Content="Play From Cursor"
+                      Command="{Binding PlayFromPositionCommand}"
+                      ToolTip.Tip="Play from the scrub position on the timeline." />
+              <Button Content="Play Event"
+                      Command="{Binding PlayEventCommand}"
+                      ToolTip.Tip="Play a short preview around the selected event." />
               <Button Content="Stop Playback"
                       Command="{Binding StopPreviewCommand}"
                       ToolTip.Tip="Stop audio playback." />
             </StackPanel>
             <TextBlock FontSize="12" Foreground="Gray"
                        Text="Listen to the selected preview." />
+            <TextBlock Text="Scrub Position" Margin="0,6,0,0" />
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+              <Slider Minimum="0" Maximum="1" Value="{Binding ScrubPosition}"
+                      ToolTip.Tip="Scrub through the timeline and play from the cursor." />
+              <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                         Text="{Binding ScrubTimecode}" />
+            </Grid>
+            <TextBlock Text="Event Preview" Margin="0,6,0,0" />
+            <ComboBox ItemsSource="{Binding DetectedEventOptions}"
+                      SelectedIndex="{Binding SelectedEventIndex}"
+                      ToolTip.Tip="Select a detected event to preview." />
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+              <Slider Minimum="50" Maximum="1000" Value="{Binding EventPreviewMs}"
+                      ToolTip.Tip="Preview duration in milliseconds." />
+              <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                         Text="{Binding EventPreviewMs, StringFormat={}{0:0} ms}" />
+            </Grid>
+            <CheckBox Content="Loop event preview"
+                      IsChecked="{Binding LoopPreview}"
+                      ToolTip.Tip="Loop the event preview audio." />
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+              <Slider Minimum="1" Maximum="8" Value="{Binding LoopRepeats}"
+                      ToolTip.Tip="Number of repeats when looping." />
+              <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                         Text="{Binding LoopRepeats, StringFormat={}{0}x}" />
+            </Grid>
           </StackPanel>
         </Border>
 
@@ -83,6 +115,9 @@
             <Button Content="Export Difference WAV"
                     Command="{Binding ExportDifferenceCommand}"
                     ToolTip.Tip="Save only what was removed (useful for auditing cleanup)." />
+            <Button Content="Export Event Markers"
+                    Command="{Binding ExportEventsCommand}"
+                    ToolTip.Tip="Export detected events as CSV or JSON for external review." />
           </StackPanel>
         </Border>
 
@@ -147,6 +182,15 @@
           <TextBlock Grid.Column="1" Margin="8,0,0,0"
                      Text="{Binding NoiseReductionAmount, StringFormat={}{0:0.00}}" />
         </Grid>
+        <TextBlock Text="Spectral Masking" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Preserve musical detail by masking noise reduction under strong tones." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding SpectralMaskingStrength}"
+                  ToolTip.Tip="Higher values retain more masked content." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding SpectralMaskingStrength, StringFormat={}{0:0.00}}" />
+        </Grid>
 
         <TextBlock Text="Median Repair" />
         <TextBlock FontSize="12" Foreground="Gray"
@@ -195,9 +239,30 @@
         <CheckBox Content="Show click/pop markers"
                   IsChecked="{Binding ShowEventOverlay}"
                   ToolTip.Tip="Display detected click/pop locations on the waveform." />
+        <CheckBox Content="Show clicks"
+                  IsChecked="{Binding ShowClickMarkers}"
+                  ToolTip.Tip="Toggle click markers." />
+        <CheckBox Content="Show pops"
+                  IsChecked="{Binding ShowPopMarkers}"
+                  ToolTip.Tip="Toggle pop markers." />
+        <CheckBox Content="Show decrackle"
+                  IsChecked="{Binding ShowDecrackleMarkers}"
+                  ToolTip.Tip="Toggle decrackle markers." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0.1" Maximum="1" Value="{Binding EventOverlayOpacity}"
+                  ToolTip.Tip="Opacity of event overlays." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding EventOverlayOpacity, StringFormat={}{0:0.00}}" />
+        </Grid>
         <CheckBox Content="Show noise profile"
                   IsChecked="{Binding ShowNoiseProfileOverlay}"
                   ToolTip.Tip="Overlay the estimated noise profile across the waveform." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0.1" Maximum="1" Value="{Binding NoiseProfileOpacity}"
+                  ToolTip.Tip="Opacity of the noise profile overlay." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding NoiseProfileOpacity, StringFormat={}{0:0.00}}" />
+        </Grid>
 
         <TextBlock Text="Timeline Zoom" Margin="0,8,0,0" />
         <TextBlock FontSize="12" Foreground="Gray"
@@ -225,6 +290,12 @@
                                NoiseProfile="{Binding NoiseProfile}"
                                ShowEventOverlay="{Binding ShowEventOverlay}"
                                ShowNoiseProfileOverlay="{Binding ShowNoiseProfileOverlay}"
+                               ShowClickMarkers="{Binding ShowClickMarkers}"
+                               ShowPopMarkers="{Binding ShowPopMarkers}"
+                               ShowDecrackleMarkers="{Binding ShowDecrackleMarkers}"
+                               EventOverlayOpacity="{Binding EventOverlayOpacity}"
+                               NoiseProfileOpacity="{Binding NoiseProfileOpacity}"
+                               SelectedEventIndex="{Binding SelectedEventIndex}"
                                ZoomFactor="{Binding ZoomFactor}"
                                ViewOffset="{Binding ViewOffset}" />
       </Border>
