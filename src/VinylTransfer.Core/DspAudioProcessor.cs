@@ -744,7 +744,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             magnitudes[i] = (float)spectrum[i].Magnitude;
         }
 
-        // Smooth in-place to avoid double allocation
+        // Inline smoothing logic to avoid calling SmoothProfile (which would create another copy)
         var smoothed = new float[spectrum.Length];
         for (var i = 0; i < magnitudes.Length; i++)
         {

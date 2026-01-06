@@ -41,9 +41,7 @@ public sealed class DetectedEventExportService
         }
 
         // Default to JSON for unrecognized or missing extensions
-        var jsonPath = string.IsNullOrEmpty(extension) 
-            ? path + ".json" 
-            : Path.ChangeExtension(path, ".json");
+        var jsonPath = Path.ChangeExtension(path, ".json");
         WriteJson(jsonPath, buffer, detectedEvents);
     }
 

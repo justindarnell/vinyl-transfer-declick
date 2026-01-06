@@ -38,6 +38,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private bool _isPlaying;
     private long _playbackPosition;
     private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
+    private readonly object _debounceLock = new();
     private System.Threading.CancellationTokenSource? _scrubSaveCts;
     private System.Threading.CancellationTokenSource? _eventIndexSaveCts;
 
@@ -926,27 +927,30 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void DebounceSaveSettings(ref System.Threading.CancellationTokenSource? cts, int delayMs)
     {
-        // Cancel any pending save
-        cts?.Cancel();
-        cts?.Dispose();
-        cts = new System.Threading.CancellationTokenSource();
-        
-        var token = cts.Token;
-        _ = Task.Run(async () =>
+        lock (_debounceLock)
         {
-            try
+            // Cancel any pending save
+            cts?.Cancel();
+            cts?.Dispose();
+            cts = new System.Threading.CancellationTokenSource();
+            
+            var token = cts.Token;
+            _ = Task.Run(async () =>
             {
-                await Task.Delay(delayMs, token);
-                if (!token.IsCancellationRequested)
+                try
                 {
-                    SaveSettings();
+                    await Task.Delay(delayMs, token);
+                    if (!token.IsCancellationRequested)
+                    {
+                        SaveSettings();
+                    }
                 }
-            }
-            catch (TaskCanceledException)
-            {
-                // Expected when debouncing
-            }
-        }, token);
+                catch (TaskCanceledException)
+                {
+                    // Expected when debouncing
+                }
+            }, token);
+        }
     }
 
     private void SaveSettings()
@@ -1204,8 +1208,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         var sampleRate = buffer.SampleRate;
         var channels = buffer.Channels;
         var previewFrames = (int)Math.Max(64, Math.Round(EventPreviewMs * sampleRate / 1000d));
-        var safeEventFrame = Math.Clamp(eventFrame, 0, Math.Max(0, buffer.FrameCount - 1));
-        var startFrame = Math.Clamp(safeEventFrame - (previewFrames / 2), 0, Math.Max(0, buffer.FrameCount - previewFrames));
+        var safeEventFrame = Math.Clamp(eventFrame, 0, buffer.FrameCount - 1);
+        var startFrame = Math.Clamp(safeEventFrame - (previewFrames / 2), 0, buffer.FrameCount - previewFrames);
         var frames = Math.Min(previewFrames, buffer.FrameCount - startFrame);
         var preview = new float[frames * channels];
         Array.Copy(buffer.Samples, startFrame * channels, preview, 0, preview.Length);
