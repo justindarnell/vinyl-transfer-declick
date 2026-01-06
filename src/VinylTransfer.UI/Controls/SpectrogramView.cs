@@ -120,15 +120,14 @@ public sealed class SpectrogramView : Control
         var offset = Math.Clamp(viewOffset, 0d, 1d);
         var startFrame = (int)Math.Round(maxStart * offset);
 
-        var fftSize = 1024;
-        if (buffer.SampleRate <= 24000)
+        var fftSize = SelectFftSize(buffer.FrameCount, buffer.SampleRate);
+        var mono = BuildMonoSamples(buffer);
+        if (fftSize < 64 || mono.Length < fftSize)
         {
-            fftSize = 512;
+            return bitmap;
         }
 
-        var hopSize = fftSize / 4;
         var window = BuildHannWindow(fftSize);
-        var mono = BuildMonoSamples(buffer);
         var bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888);
 
         using var framebuffer = bitmap.Lock();
@@ -148,12 +147,13 @@ public sealed class SpectrogramView : Control
         for (var x = 0; x < width; x++)
         {
             var frameIndex = startFrame + (int)Math.Round((x / (double)width) * Math.Max(1, visibleFrames - 1));
-            var sampleStart = Math.Clamp(frameIndex - fftSize / 2, 0, mono.Length - fftSize);
+            var maxSampleStart = Math.Max(0, mono.Length - fftSize);
+            var sampleStart = Math.Clamp(frameIndex - fftSize / 2, 0, maxSampleStart);
             var spectrum = ComputeSpectrum(mono, sampleStart, fftSize, window);
 
             for (var y = 0; y < height; y++)
             {
-                var bin = (int)Math.Round((1 - (y / (double)(height - 1))) * (spectrum.Length - 1));
+                var bin = (int)Math.Round((1 - (y / (double)Math.Max(1, height - 1))) * (spectrum.Length - 1));
                 var magnitude = spectrum[bin];
                 magnitudes[x, y] = magnitude;
                 if (magnitude > maxMagnitude)
@@ -181,6 +181,18 @@ public sealed class SpectrogramView : Control
         Marshal.Copy(pixelBuffer, 0, framebuffer.Address, pixelBuffer.Length);
 
         return bitmap;
+    }
+
+    private static int SelectFftSize(int frameCount, int sampleRate)
+    {
+        var target = sampleRate <= 24000 ? 512 : 1024;
+        var fftSize = 1;
+        while (fftSize * 2 <= Math.Min(target, frameCount))
+        {
+            fftSize *= 2;
+        }
+
+        return fftSize;
     }
 
     private static float[] BuildMonoSamples(AudioBuffer buffer)

@@ -198,9 +198,10 @@ public sealed class WaveformView : Control
         }
 
         var height = bounds.Height;
+        var endFrame = startFrame + visibleFrames;
         foreach (var detectedEvent in events)
         {
-            if (detectedEvent.Frame < startFrame || detectedEvent.Frame > startFrame + visibleFrames)
+            if (detectedEvent.Frame < startFrame || detectedEvent.Frame >= endFrame)
             {
                 continue;
             }
@@ -236,7 +237,7 @@ public sealed class WaveformView : Control
         for (var segment = 0; segment < segmentCount; segment++)
         {
             var segmentFrame = segment * profile.SegmentFrames;
-            if (segmentFrame < startFrame || segmentFrame > endFrame)
+            if (segmentFrame < startFrame || segmentFrame >= endFrame)
             {
                 continue;
             }
