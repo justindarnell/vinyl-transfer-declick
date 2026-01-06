@@ -137,6 +137,13 @@
         <CheckBox Content="Enable spectral noise reduction"
                   IsChecked="{Binding UseSpectralNoiseReduction}"
                   ToolTip.Tip="Spectral noise reduction is more effective for steady hiss." />
+
+        <TextBlock Text="Multi-Band Transient Detection" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Use frequency bands to detect small ticks and clicks." />
+        <CheckBox Content="Enable multi-band transient detection"
+                  IsChecked="{Binding UseMultiBandTransientDetection}"
+                  ToolTip.Tip="Helps catch subtle ticks that are missed by a single threshold." />
       </StackPanel>
     </ScrollViewer>
 

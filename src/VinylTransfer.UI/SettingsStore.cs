@@ -68,4 +68,5 @@ public sealed record SettingsData
     public double NoiseReductionAmount { get; init; } = 0.5;
     public bool UseMedianRepair { get; init; } = true;
     public bool UseSpectralNoiseReduction { get; init; } = true;
+    public bool UseMultiBandTransientDetection { get; init; } = true;
 }

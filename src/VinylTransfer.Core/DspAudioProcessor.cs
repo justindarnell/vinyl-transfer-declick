@@ -88,6 +88,13 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var useMedianRepair = settings.UseAutoMode
             ? settings.AutoMode.UseMedianRepair
             : settings.ManualMode.UseMedianRepair;
+        var useMultiBandTransientDetection = settings.UseAutoMode
+            ? settings.AutoMode.UseMultiBandTransientDetection
+            : settings.ManualMode.UseMultiBandTransientDetection;
+
+        var transientFrames = useMultiBandTransientDetection
+            ? DetectTransientFrames(samples, input.SampleRate, input.Channels)
+            : Array.Empty<bool>();
 
         clicksDetected = 0;
         popsDetected = 0;
@@ -101,14 +108,22 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 var sample = samples[index];
                 var abs = MathF.Abs(sample);
 
-                if (abs >= popThreshold)
+                var clickThresholdAdjusted = clickThreshold;
+                var popThresholdAdjusted = popThreshold;
+                if (useMultiBandTransientDetection && transientFrames.Length > frame && transientFrames[frame])
+                {
+                    clickThresholdAdjusted *= 0.75f;
+                    popThresholdAdjusted *= 0.85f;
+                }
+
+                if (abs >= popThresholdAdjusted)
                 {
                     popsDetected++;
                     samples[index] = useMedianRepair
                         ? MedianWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3)
                         : BlendWithNeighbors(samples, frame, channel, channels, input.FrameCount, 3, popIntensity);
                 }
-                else if (abs >= clickThreshold)
+                else if (abs >= clickThresholdAdjusted)
                 {
                     clicksDetected++;
                     samples[index] = useMedianRepair
@@ -349,6 +364,127 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         return window;
+    }
+
+    private static bool[] DetectTransientFrames(float[] samples, int sampleRate, int channels)
+    {
+        var frameSize = 1024;
+        var hopSize = 512;
+        var totalFrames = samples.Length / channels;
+        var frameCount = (totalFrames - frameSize) / hopSize + 1;
+        if (frameCount <= 0)
+        {
+            return Array.Empty<bool>();
+        }
+
+        var window = BuildHannWindow(frameSize);
+        var lowBand = new float[frameCount];
+        var midBand = new float[frameCount];
+        var highBand = new float[frameCount];
+
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            var offset = frame * hopSize;
+            var buffer = new Complex[frameSize];
+            for (var i = 0; i < frameSize; i++)
+            {
+                var sampleIndex = (offset + i) * channels;
+                var sum = 0f;
+                for (var channel = 0; channel < channels; channel++)
+                {
+                    sum += samples[sampleIndex + channel];
+                }
+
+                var mono = sum / channels;
+                buffer[i] = new Complex(mono * window[i], 0);
+            }
+
+            FftUtility.Fft(buffer, invert: false);
+
+            for (var bin = 0; bin < buffer.Length / 2; bin++)
+            {
+                var magnitude = buffer[bin].Magnitude;
+                var frequency = bin * sampleRate / (float)frameSize;
+                var power = (float)(magnitude * magnitude);
+                if (frequency < 2000f)
+                {
+                    lowBand[frame] += power;
+                }
+                else if (frequency < 6000f)
+                {
+                    midBand[frame] += power;
+                }
+                else
+                {
+                    highBand[frame] += power;
+                }
+            }
+        }
+
+        var lowMedian = Median(lowBand);
+        var midMedian = Median(midBand);
+        var highMedian = Median(highBand);
+
+        var flags = new bool[frameCount];
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            var isTransient = lowBand[frame] > lowMedian * 5f ||
+                              midBand[frame] > midMedian * 5f ||
+                              highBand[frame] > highMedian * 6f;
+            flags[frame] = isTransient;
+        }
+
+        var expanded = new bool[frameCount];
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            if (!flags[frame])
+            {
+                continue;
+            }
+
+            expanded[frame] = true;
+            if (frame > 0)
+            {
+                expanded[frame - 1] = true;
+            }
+
+            if (frame + 1 < frameCount)
+            {
+                expanded[frame + 1] = true;
+            }
+        }
+
+        var perSampleFlags = new bool[totalFrames];
+        for (var frame = 0; frame < frameCount; frame++)
+        {
+            if (!expanded[frame])
+            {
+                continue;
+            }
+
+            var start = frame * hopSize;
+            var end = Math.Min(totalFrames, start + hopSize);
+            for (var i = start; i < end; i++)
+            {
+                perSampleFlags[i] = true;
+            }
+        }
+
+        return perSampleFlags;
+    }
+
+    private static float Median(IReadOnlyList<float> values)
+    {
+        if (values.Count == 0)
+        {
+            return 0f;
+        }
+
+        var ordered = values.OrderBy(x => x).ToArray();
+        var mid = ordered.Length / 2;
+        return ordered.Length % 2 == 0
+            ? (ordered[mid - 1] + ordered[mid]) / 2f
+            : ordered[mid];
     }
 
     private static class FftUtility

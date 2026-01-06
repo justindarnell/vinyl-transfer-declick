@@ -7,7 +7,8 @@ public sealed record AutoModeSettings(
     float PopSensitivity,
     float NoiseReductionAmount,
     bool UseMedianRepair,
-    bool UseSpectralNoiseReduction
+    bool UseSpectralNoiseReduction,
+    bool UseMultiBandTransientDetection
 );
 
 public sealed record ManualModeSettings(
@@ -18,5 +19,6 @@ public sealed record ManualModeSettings(
     float NoiseFloor,
     float NoiseReductionAmount,
     bool UseMedianRepair,
-    bool UseSpectralNoiseReduction
+    bool UseSpectralNoiseReduction,
+    bool UseMultiBandTransientDetection
 );

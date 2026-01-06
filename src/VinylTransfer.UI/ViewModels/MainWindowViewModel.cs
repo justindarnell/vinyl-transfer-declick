@@ -38,6 +38,7 @@ public sealed class MainWindowViewModel : ReactiveObject
     private double _noiseReductionAmount = 0.5;
     private bool _useMedianRepair = true;
     private bool _useSpectralNoiseReduction = true;
+    private bool _useMultiBandTransientDetection = true;
 
     public MainWindowViewModel()
     {
@@ -173,6 +174,16 @@ public sealed class MainWindowViewModel : ReactiveObject
         set
         {
             this.RaiseAndSetIfChanged(ref _useSpectralNoiseReduction, value);
+            SaveSettings();
+        }
+    }
+
+    public bool UseMultiBandTransientDetection
+    {
+        get => _useMultiBandTransientDetection;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _useMultiBandTransientDetection, value);
             SaveSettings();
         }
     }
@@ -408,14 +419,16 @@ public sealed class MainWindowViewModel : ReactiveObject
             NoiseFloor: ConvertDbToAmplitude(NoiseFloorDb),
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
-            UseSpectralNoiseReduction: UseSpectralNoiseReduction);
+            UseSpectralNoiseReduction: UseSpectralNoiseReduction,
+            UseMultiBandTransientDetection: UseMultiBandTransientDetection);
 
         var autoSettings = new AutoModeSettings(
             ClickSensitivity: (float)ClickThreshold,
             PopSensitivity: (float)PopThreshold,
             NoiseReductionAmount: (float)NoiseReductionAmount,
             UseMedianRepair: UseMedianRepair,
-            UseSpectralNoiseReduction: UseSpectralNoiseReduction);
+            UseSpectralNoiseReduction: UseSpectralNoiseReduction,
+            UseMultiBandTransientDetection: UseMultiBandTransientDetection);
 
         return new ProcessingSettings(autoSettings, manualSettings, UseAutoMode: false);
     }
@@ -470,6 +483,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         NoiseReductionAmount = settings.NoiseReductionAmount;
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
+        UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
         _suppressSettingsSave = false;
     }
 
@@ -489,7 +503,8 @@ public sealed class MainWindowViewModel : ReactiveObject
             NoiseFloorDb = NoiseFloorDb,
             NoiseReductionAmount = NoiseReductionAmount,
             UseMedianRepair = UseMedianRepair,
-            UseSpectralNoiseReduction = UseSpectralNoiseReduction
+            UseSpectralNoiseReduction = UseSpectralNoiseReduction,
+            UseMultiBandTransientDetection = UseMultiBandTransientDetection
         };
 
         _settingsStore.Save(data);
@@ -506,6 +521,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         NoiseReductionAmount = settings.NoiseReductionAmount;
         UseMedianRepair = settings.UseMedianRepair;
         UseSpectralNoiseReduction = settings.UseSpectralNoiseReduction;
+        UseMultiBandTransientDetection = settings.UseMultiBandTransientDetection;
         _suppressSettingsSave = false;
         SaveSettings();
     }

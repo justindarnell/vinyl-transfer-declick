@@ -46,7 +46,8 @@ public static class AudioAnalysis
             NoiseFloor: noiseFloor,
             NoiseReductionAmount: noiseReduction,
             UseMedianRepair: true,
-            UseSpectralNoiseReduction: true);
+            UseSpectralNoiseReduction: true,
+            UseMultiBandTransientDetection: true);
     }
 
     private static float GetPercentile(float[] absSamples, float percentile)
