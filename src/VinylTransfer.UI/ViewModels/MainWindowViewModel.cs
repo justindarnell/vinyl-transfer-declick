@@ -88,6 +88,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             .Subscribe(ex => StatusMessage = $"Status: {ex.Message}")
             .DisposeWith(_disposables);
 
+        // Debounce zoom and view offset changes to reduce I/O during slider dragging
+        this.WhenAnyValue(vm => vm.ZoomFactor, vm => vm.ViewOffset)
+            .Throttle(TimeSpan.FromMilliseconds(500))
+            .Subscribe(_ => SaveSettings())
+            .DisposeWith(_disposables);
+
         LoadSettings();
     }
 
@@ -260,21 +266,13 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     public double ZoomFactor
     {
         get => _zoomFactor;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref _zoomFactor, value);
-            SaveSettings();
-        }
+        set => this.RaiseAndSetIfChanged(ref _zoomFactor, value);
     }
 
     public double ViewOffset
     {
         get => _viewOffset;
-        set
-        {
-            this.RaiseAndSetIfChanged(ref _viewOffset, value);
-            SaveSettings();
-        }
+        set => this.RaiseAndSetIfChanged(ref _viewOffset, value);
     }
 
     public IReadOnlyList<DetectedEvent> DetectedEvents
