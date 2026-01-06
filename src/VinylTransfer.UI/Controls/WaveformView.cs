@@ -98,8 +98,8 @@ public sealed class WaveformView : Control
             Brushes.Gray);
 
         var point = new Point(
-            bounds.X + (bounds.Width - text.Bounds.Width) / 2,
-            bounds.Y + (bounds.Height - text.Bounds.Height) / 2);
+            bounds.X + (bounds.Width - text.Width) / 2,
+            bounds.Y + (bounds.Height - text.Height) / 2);
 
         context.DrawText(text, point);
     }
