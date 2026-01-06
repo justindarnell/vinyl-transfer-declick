@@ -366,10 +366,11 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
                 FftUtility.Fft(spectrum, invert: true);
 
-                var offsetInChannel = segmentStart + frame * hopSize;
+                // Write back to output buffer with overlap-add
+                var outputOffset = frame * hopSize;
                 for (var i = 0; i < frameSize; i++)
                 {
-                    var outputIndex = offsetInChannel + i - segmentStart;
+                    var outputIndex = outputOffset + i;
                     if (outputIndex < 0 || outputIndex >= output.Length)
                     {
                         continue;

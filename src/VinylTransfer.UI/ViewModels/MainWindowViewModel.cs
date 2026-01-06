@@ -589,19 +589,21 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         // Stream audio in chunks to avoid allocating large byte arrays for entire buffer
         const int chunkSizeInSamples = 4096;
-        int totalSamples = buffer.Samples.Length;
+        long totalSamples = buffer.Samples.Length;
         int sampleSizeInBytes = sizeof(float);
         var chunkBytes = new byte[chunkSizeInSamples * sampleSizeInBytes];
 
-        int sampleOffset = (int)_playbackPosition;
+        // Clamp playback position to valid range
+        long sampleOffset = Math.Clamp(_playbackPosition, 0, totalSamples);
+        
         while (sampleOffset < totalSamples)
         {
-            int samplesThisChunk = Math.Min(chunkSizeInSamples, totalSamples - sampleOffset);
+            int samplesThisChunk = (int)Math.Min(chunkSizeInSamples, totalSamples - sampleOffset);
             int bytesThisChunk = samplesThisChunk * sampleSizeInBytes;
 
             Buffer.BlockCopy(
                 buffer.Samples,
-                sampleOffset * sampleSizeInBytes,
+                (int)(sampleOffset * sampleSizeInBytes),
                 chunkBytes,
                 0,
                 bytesThisChunk);
@@ -648,7 +650,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         // GetPosition returns bytes played
         var bytesPlayed = _outputDevice.GetPosition();
-        var samplesPlayed = bytesPlayed / sizeof(float);
+        var bytesPerSample = sizeof(float) * outputFormat.Channels;
+        var samplesPlayed = bytesPlayed / bytesPerSample;
         
         _playbackPosition = samplesPlayed;
     }
