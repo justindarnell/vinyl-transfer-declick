@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reactive.Disposables;
 using Avalonia.Controls;
 using Avalonia.ReactiveUI;
 using ReactiveUI;
@@ -19,19 +20,19 @@ public sealed partial class MainWindow : ReactiveWindow<MainWindowViewModel>
                 return;
             }
 
-            disposables(ViewModel.OpenFileInteraction.RegisterHandler(async context =>
+            ViewModel.OpenFileInteraction.RegisterHandler(async context =>
             {
                 var dialog = context.Input;
                 var result = await dialog.ShowAsync(this);
                 context.SetOutput(result?.FirstOrDefault());
-            }));
+            }).DisposeWith(disposables);
 
-            disposables(ViewModel.SaveFileInteraction.RegisterHandler(async context =>
+            ViewModel.SaveFileInteraction.RegisterHandler(async context =>
             {
                 var dialog = context.Input;
                 var result = await dialog.ShowAsync(this);
                 context.SetOutput(result);
-            }));
+            }).DisposeWith(disposables);
         });
     }
 }

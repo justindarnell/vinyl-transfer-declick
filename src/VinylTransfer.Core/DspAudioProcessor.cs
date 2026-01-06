@@ -77,7 +77,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 : settings.ManualMode.UseSpectralNoiseReduction;
             if (useSpectralNoiseReduction)
             {
-                ApplySpectralNoiseReduction(samples, input.Channels, reductionAmount);
+                ApplySpectralNoiseReduction(samples, input.SampleRate, input.Channels, reductionAmount);
             }
             else
             {
@@ -210,7 +210,27 @@ public sealed class DspAudioProcessor : IAudioProcessor
     {
         var start = Math.Max(0, frame - window);
         var end = Math.Min(frameCount - 1, frame + window);
-        var values = new List<float>(end - start);
+        var maxSize = 2 * window + 1;
+
+        // Use heap allocation for large windows to avoid stack overflow
+        // Conservative threshold since this is called in a loop for each sample
+        const int MaxStackAllocSize = 32;
+        
+        if (maxSize <= MaxStackAllocSize)
+        {
+            Span<float> values = stackalloc float[maxSize];
+            return ComputeMedian(samples, frame, channel, channels, start, end, values);
+        }
+        else
+        {
+            var values = new float[maxSize];
+            return ComputeMedian(samples, frame, channel, channels, start, end, values);
+        }
+    }
+
+    private static float ComputeMedian(float[] samples, int frame, int channel, int channels, int start, int end, Span<float> values)
+    {
+        var count = 0;
 
         for (var i = start; i <= end; i++)
         {
@@ -219,25 +239,39 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 continue;
             }
 
-            values.Add(samples[i * channels + channel]);
+            values[count++] = samples[i * channels + channel];
         }
 
-        if (values.Count == 0)
+        if (count == 0)
         {
             return samples[frame * channels + channel];
         }
 
-        values.Sort();
-        var mid = values.Count / 2;
-        return values.Count % 2 == 0
+        values.Slice(0, count).Sort();
+        var mid = count / 2;
+        return count % 2 == 0
             ? (values[mid - 1] + values[mid]) / 2f
             : values[mid];
     }
 
-    private static void ApplySpectralNoiseReduction(float[] samples, int channels, float reductionAmount)
+    private static void ApplySpectralNoiseReduction(float[] samples, int sampleRate, int channels, float reductionAmount)
     {
-        var frameSize = 1024;
-        var hopSize = 512;
+        // Make frame size adaptive based on sample rate to maintain consistent time resolution.
+        // Target ~23ms window (1024 samples at 44.1kHz).
+        var targetTimeMs = 23.0;
+        var targetFrameSize = (int)(sampleRate * targetTimeMs / 1000.0);
+        
+        // Round to nearest power of 2 for FFT
+        var frameSize = 1;
+        while (frameSize < targetFrameSize)
+        {
+            frameSize <<= 1;
+        }
+        
+        // Clamp to reasonable range
+        frameSize = Math.Clamp(frameSize, 512, 8192);
+        var hopSize = frameSize / 2;
+        
         var reduction = Math.Clamp(reductionAmount, 0f, 1f);
         if (reduction <= 0f || samples.Length == 0)
         {
@@ -258,75 +292,111 @@ public sealed class DspAudioProcessor : IAudioProcessor
         int hopSize,
         float reductionAmount)
     {
-        var window = BuildHannWindow(frameSize);
-        var frameCount = (samples.Length / channels - frameSize) / hopSize + 1;
-        if (frameCount <= 0)
+        var totalSamplesPerChannel = samples.Length / channels;
+        if (totalSamplesPerChannel <= 0)
         {
             return;
         }
 
-        var spectra = new Complex[frameCount][];
-        var frameRms = new float[frameCount];
-        var output = new float[samples.Length / channels];
-        var weight = new float[samples.Length / channels];
+        var window = BuildHannWindow(frameSize);
 
-        for (var frame = 0; frame < frameCount; frame++)
+        // Limit the maximum number of samples per channel processed in a single
+        // segment to bound memory usage. This value can be tuned if needed.
+        const int MaxSegmentSamplesPerChannel = 1_000_000;
+
+        var segmentStart = 0;
+        while (segmentStart < totalSamplesPerChannel)
         {
-            var offset = frame * hopSize;
-            var buffer = new Complex[frameSize];
-            double sumSq = 0;
-            for (var i = 0; i < frameSize; i++)
+            var segmentLength = Math.Min(MaxSegmentSamplesPerChannel, totalSamplesPerChannel - segmentStart);
+
+            var frameCount = (segmentLength - frameSize) / hopSize + 1;
+            if (frameCount <= 0)
             {
-                var sampleIndex = (offset + i) * channels + channel;
-                var sample = samples[sampleIndex];
-                var windowed = sample * window[i];
-                buffer[i] = new Complex(windowed, 0);
-                sumSq += sample * sample;
+                // Not enough samples in this segment for at least one frame.
+                // Move to the next (if any) to avoid an infinite loop.
+                segmentStart += segmentLength;
+                continue;
             }
 
-            frameRms[frame] = (float)Math.Sqrt(sumSq / frameSize);
-            FftUtility.Fft(buffer, invert: false);
-            spectra[frame] = buffer;
-        }
+            var spectra = new Complex[frameCount][];
+            var frameRms = new float[frameCount];
+            var output = new float[segmentLength];
+            var weight = new float[segmentLength];
 
-        var noiseProfile = EstimateNoiseProfile(spectra, frameRms);
-
-        for (var frame = 0; frame < frameCount; frame++)
-        {
-            var spectrum = spectra[frame];
-            for (var i = 0; i < spectrum.Length; i++)
+            // Analysis: compute spectra and frame RMS for this segment.
+            for (var frame = 0; frame < frameCount; frame++)
             {
-                var magnitude = spectrum[i].Magnitude;
-                var noise = noiseProfile[i];
-                var reduced = Math.Max(0, magnitude - noise * reductionAmount);
-                if (magnitude > 0)
+                var offsetInChannel = segmentStart + frame * hopSize;
+                var buffer = new Complex[frameSize];
+                double sumSq = 0;
+                
+                // Calculate safe upper bound for this frame to avoid bounds check in inner loop
+                var maxSampleOffset = Math.Min(frameSize, (samples.Length / channels) - offsetInChannel);
+                
+                for (var i = 0; i < maxSampleOffset; i++)
                 {
-                    spectrum[i] *= reduced / magnitude;
+                    var sampleIndex = (offsetInChannel + i) * channels + channel;
+                    var sample = samples[sampleIndex];
+                    var windowed = sample * window[i];
+                    buffer[i] = new Complex(windowed, 0);
+                    sumSq += sample * sample;
+                }
+
+                frameRms[frame] = (float)Math.Sqrt(sumSq / frameSize);
+                FftUtility.Fft(buffer, invert: false);
+                spectra[frame] = buffer;
+            }
+
+            var noiseProfile = EstimateNoiseProfile(spectra, frameRms);
+
+            // Synthesis: apply noise reduction, inverse FFT, and overlap-add.
+            for (var frame = 0; frame < frameCount; frame++)
+            {
+                var spectrum = spectra[frame];
+                for (var i = 0; i < spectrum.Length; i++)
+                {
+                    var magnitude = spectrum[i].Magnitude;
+                    var noise = noiseProfile[i];
+                    var reduced = Math.Max(0, magnitude - noise * reductionAmount);
+                    if (magnitude > 0)
+                    {
+                        spectrum[i] *= reduced / magnitude;
+                    }
+                }
+
+                FftUtility.Fft(spectrum, invert: true);
+
+                // Write back to output buffer with overlap-add
+                var outputOffset = frame * hopSize;
+                for (var i = 0; i < frameSize; i++)
+                {
+                    var outputIndex = outputOffset + i;
+                    if (outputIndex < 0 || outputIndex >= output.Length)
+                    {
+                        continue;
+                    }
+
+                    var windowed = spectrum[i].Real * window[i];
+                    output[outputIndex] += (float)windowed;
+                    weight[outputIndex] += window[i];
                 }
             }
 
-            FftUtility.Fft(spectrum, invert: true);
-
-            var offset = frame * hopSize;
-            for (var i = 0; i < frameSize; i++)
+            // Normalize by overlap-add weights and write back to the main samples array.
+            for (var i = 0; i < segmentLength; i++)
             {
-                var outputIndex = offset + i;
-                if (outputIndex >= output.Length)
+                var channelSampleIndex = segmentStart + i;
+                var sampleIndex = channelSampleIndex * channels + channel;
+                if (sampleIndex >= samples.Length)
                 {
                     break;
                 }
-
-                var windowed = spectrum[i].Real * window[i];
-                output[outputIndex] += (float)windowed;
-                weight[outputIndex] += window[i];
+                
+                var normalized = weight[i] > 0 ? output[i] / weight[i] : output[i];
+                samples[sampleIndex] = normalized;
             }
-        }
 
-        for (var i = 0; i < output.Length; i++)
-        {
-            var sampleIndex = i * channels + channel;
-            var normalized = weight[i] > 0 ? output[i] / weight[i] : output[i];
-            samples[sampleIndex] = normalized;
+            segmentStart += segmentLength;
         }
     }
 
@@ -401,11 +471,17 @@ public sealed class DspAudioProcessor : IAudioProcessor
 
             FftUtility.Fft(buffer, invert: false);
 
+            var binFrequencyResolution = sampleRate / (float)frameSize;
             for (var bin = 0; bin < buffer.Length / 2; bin++)
             {
                 var magnitude = buffer[bin].Magnitude;
-                var frequency = bin * sampleRate / (float)frameSize;
+                var frequency = bin * binFrequencyResolution;
                 var power = (float)(magnitude * magnitude);
+                // Frequency bands for transient detection:
+                // Low: <2kHz (captures bass/drums/pops)
+                // Mid: 2-6kHz (captures vocals/instruments)
+                // High: >6kHz (captures clicks/surface noise)
+                // These thresholds are optimized for typical vinyl recordings.
                 if (frequency < 2000f)
                 {
                     lowBand[frame] += power;
@@ -454,6 +530,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
         }
 
+        // Expand transient flags from frame-level granularity to per-sample resolution.
+        // Each frame's transient flag is applied to all samples in the corresponding hop.
+        // This provides adequate precision for threshold adjustments while maintaining
+        // computational efficiency of frame-level analysis.
         var perSampleFlags = new bool[totalFrames];
         for (var frame = 0; frame < frameCount; frame++)
         {
@@ -492,6 +572,13 @@ public sealed class DspAudioProcessor : IAudioProcessor
         public static void Fft(Complex[] buffer, bool invert)
         {
             var n = buffer.Length;
+            
+            // FFT requires buffer size to be a power of 2 for Cooley-Tukey radix-2 algorithm
+            if (n == 0 || (n & (n - 1)) != 0)
+            {
+                throw new ArgumentException("Buffer size must be a power of 2.", nameof(buffer));
+            }
+            
             for (int i = 1, j = 0; i < n; i++)
             {
                 var bit = n >> 1;
