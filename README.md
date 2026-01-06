@@ -65,6 +65,8 @@ Application to process digitized vinyls to remove pops, clicks, and other noise.
 - Add curated regression fixtures and automated DSP tests that validate click/pop counts, RMS deltas, and SNR gains.
 - Add export of detected event markers (CSV/JSON) for external auditing.
 - Consider adaptive per-band thresholds driven by transient density to reduce over-repair in quiet passages.
+- Add spectral selection tools (lasso/brush) and region-specific processing on the spectrogram.
+- Add keyboard-driven zoom/pan shortcuts plus a minimap for long captures.
 
 ## Additional context for the next engineer
 

@@ -198,6 +198,22 @@
         <CheckBox Content="Show noise profile"
                   IsChecked="{Binding ShowNoiseProfileOverlay}"
                   ToolTip.Tip="Overlay the estimated noise profile across the waveform." />
+
+        <TextBlock Text="Timeline Zoom" Margin="0,8,0,0" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Zoom and pan the waveform/spectrogram for detailed inspection." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="1" Maximum="8" Value="{Binding ZoomFactor}"
+                  ToolTip.Tip="Zoom level (1x = full timeline)." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ZoomFactor, StringFormat={}{0:0.0}x}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding ViewOffset}"
+                  ToolTip.Tip="Pan through the timeline when zoomed in." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ViewOffset, StringFormat={}{0:0.00}}" />
+        </Grid>
       </StackPanel>
     </ScrollViewer>
 
@@ -208,12 +224,16 @@
                                DetectedEvents="{Binding DetectedEvents}"
                                NoiseProfile="{Binding NoiseProfile}"
                                ShowEventOverlay="{Binding ShowEventOverlay}"
-                               ShowNoiseProfileOverlay="{Binding ShowNoiseProfileOverlay}" />
+                               ShowNoiseProfileOverlay="{Binding ShowNoiseProfileOverlay}"
+                               ZoomFactor="{Binding ZoomFactor}"
+                               ViewOffset="{Binding ViewOffset}" />
       </Border>
 
       <TextBlock Grid.Row="2" Text="Spectrogram" FontWeight="SemiBold" Margin="0,16,0,0" />
       <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,8,0,0">
-        <TextBlock Text="Spectrogram view placeholder" Foreground="Gray" />
+        <controls:SpectrogramView Buffer="{Binding DisplayBuffer}"
+                                  ZoomFactor="{Binding ZoomFactor}"
+                                  ViewOffset="{Binding ViewOffset}" />
       </Border>
     </Grid>
 

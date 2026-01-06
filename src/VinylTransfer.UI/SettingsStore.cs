@@ -74,4 +74,6 @@ public sealed record SettingsData
     public bool UseBandLimitedInterpolation { get; init; } = true;
     public bool ShowEventOverlay { get; init; } = true;
     public bool ShowNoiseProfileOverlay { get; init; } = true;
+    public double ZoomFactor { get; init; } = 1;
+    public double ViewOffset { get; init; } = 0;
 }

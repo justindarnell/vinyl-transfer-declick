@@ -54,6 +54,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private bool _useBandLimitedInterpolation = true;
     private bool _showEventOverlay = true;
     private bool _showNoiseProfileOverlay = true;
+    private double _zoomFactor = 1;
+    private double _viewOffset;
     private PresetDefinition? _selectedPreset;
 
     public MainWindowViewModel()
@@ -251,6 +253,26 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         set
         {
             this.RaiseAndSetIfChanged(ref _showNoiseProfileOverlay, value);
+            SaveSettings();
+        }
+    }
+
+    public double ZoomFactor
+    {
+        get => _zoomFactor;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _zoomFactor, value);
+            SaveSettings();
+        }
+    }
+
+    public double ViewOffset
+    {
+        get => _viewOffset;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _viewOffset, value);
             SaveSettings();
         }
     }
@@ -610,6 +632,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         UseBandLimitedInterpolation = settings.UseBandLimitedInterpolation;
         ShowEventOverlay = settings.ShowEventOverlay;
         ShowNoiseProfileOverlay = settings.ShowNoiseProfileOverlay;
+        ZoomFactor = settings.ZoomFactor;
+        ViewOffset = settings.ViewOffset;
         _suppressSettingsSave = false;
     }
 
@@ -635,7 +659,9 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             DecrackleIntensity = DecrackleIntensity,
             UseBandLimitedInterpolation = UseBandLimitedInterpolation,
             ShowEventOverlay = ShowEventOverlay,
-            ShowNoiseProfileOverlay = ShowNoiseProfileOverlay
+            ShowNoiseProfileOverlay = ShowNoiseProfileOverlay,
+            ZoomFactor = ZoomFactor,
+            ViewOffset = ViewOffset
         };
 
         _ = Task.Run(() =>

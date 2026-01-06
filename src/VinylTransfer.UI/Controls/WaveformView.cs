@@ -26,6 +26,10 @@ public sealed class WaveformView : Control
         AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowEventOverlay), true);
     public static readonly StyledProperty<bool> ShowNoiseProfileOverlayProperty =
         AvaloniaProperty.Register<WaveformView, bool>(nameof(ShowNoiseProfileOverlay), true);
+    public static readonly StyledProperty<double> ZoomFactorProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(ZoomFactor), 1d);
+    public static readonly StyledProperty<double> ViewOffsetProperty =
+        AvaloniaProperty.Register<WaveformView, double>(nameof(ViewOffset), 0d);
 
     public AudioBuffer? Buffer
     {
@@ -57,6 +61,18 @@ public sealed class WaveformView : Control
         set => SetValue(ShowNoiseProfileOverlayProperty, value);
     }
 
+    public double ZoomFactor
+    {
+        get => GetValue(ZoomFactorProperty);
+        set => SetValue(ZoomFactorProperty, value);
+    }
+
+    public double ViewOffset
+    {
+        get => GetValue(ViewOffsetProperty);
+        set => SetValue(ViewOffsetProperty, value);
+    }
+
     static WaveformView()
     {
         BufferProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
@@ -64,6 +80,8 @@ public sealed class WaveformView : Control
         NoiseProfileProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ShowEventOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
         ShowNoiseProfileOverlayProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ZoomFactorProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
+        ViewOffsetProperty.Changed.AddClassHandler<WaveformView>((control, _) => control.InvalidateVisual());
     }
 
     public override void Render(DrawingContext context)
@@ -96,22 +114,23 @@ public sealed class WaveformView : Control
         var width = Math.Max(1, (int)Math.Floor(bounds.Width));
         var channels = Math.Max(1, buffer.Channels);
         var samples = buffer.Samples;
+        var zoomFactor = Math.Max(1d, ZoomFactor);
+        var visibleFrames = Math.Max(1, (int)Math.Round(frameCount / zoomFactor));
+        var maxStart = Math.Max(0, frameCount - visibleFrames);
+        var viewOffset = Math.Clamp(ViewOffset, 0d, 1d);
+        var startFrameWindow = (int)Math.Round(maxStart * viewOffset);
 
         for (var x = 0; x < width; x++)
         {
-            var startFrame = (int)Math.Floor(frameCount * (x / (double)width));
-            var endFrame = (int)Math.Floor(frameCount * ((x + 1) / (double)width)) - 1;
-            if (endFrame < startFrame)
-            {
-                endFrame = startFrame;
-            }
-
-            if (startFrame >= frameCount)
+            var startFrame = startFrameWindow + (int)Math.Floor(visibleFrames * (x / (double)width));
+            var endFrame = startFrameWindow + (int)Math.Floor(visibleFrames * ((x + 1) / (double)width)) - 1;
+            if (startFrame >= startFrameWindow + visibleFrames)
             {
                 break;
             }
 
-            endFrame = Math.Min(frameCount - 1, endFrame);
+            startFrame = Math.Clamp(startFrame, 0, frameCount - 1);
+            endFrame = Math.Clamp(endFrame, startFrame, frameCount - 1);
             var maxAmplitude = 0f;
 
             for (var frame = startFrame; frame <= endFrame; frame++)
@@ -139,12 +158,12 @@ public sealed class WaveformView : Control
 
         if (ShowNoiseProfileOverlay)
         {
-            DrawNoiseProfile(context, bounds, buffer);
+            DrawNoiseProfile(context, bounds, buffer, startFrameWindow, visibleFrames);
         }
 
         if (ShowEventOverlay)
         {
-            DrawDetectedEvents(context, bounds, buffer);
+            DrawDetectedEvents(context, bounds, buffer, startFrameWindow, visibleFrames);
         }
     }
 
@@ -165,7 +184,7 @@ public sealed class WaveformView : Control
         context.DrawText(text, point);
     }
 
-    private void DrawDetectedEvents(DrawingContext context, Rect bounds, AudioBuffer buffer)
+    private void DrawDetectedEvents(DrawingContext context, Rect bounds, AudioBuffer buffer, int startFrame, int visibleFrames)
     {
         var events = DetectedEvents;
         if (events is null || events.Count == 0)
@@ -173,8 +192,7 @@ public sealed class WaveformView : Control
             return;
         }
 
-        var frameCount = buffer.FrameCount;
-        if (frameCount <= 0)
+        if (visibleFrames <= 0)
         {
             return;
         }
@@ -182,7 +200,12 @@ public sealed class WaveformView : Control
         var height = bounds.Height;
         foreach (var detectedEvent in events)
         {
-            var x = bounds.X + (detectedEvent.Frame / (double)frameCount) * bounds.Width;
+            if (detectedEvent.Frame < startFrame || detectedEvent.Frame > startFrame + visibleFrames)
+            {
+                continue;
+            }
+
+            var x = bounds.X + ((detectedEvent.Frame - startFrame) / (double)visibleFrames) * bounds.Width;
             var pen = detectedEvent.Type switch
             {
                 DetectedEventType.Pop => PopPen,
@@ -193,7 +216,7 @@ public sealed class WaveformView : Control
         }
     }
 
-    private void DrawNoiseProfile(DrawingContext context, Rect bounds, AudioBuffer buffer)
+    private void DrawNoiseProfile(DrawingContext context, Rect bounds, AudioBuffer buffer, int startFrame, int visibleFrames)
     {
         var profile = NoiseProfile;
         if (profile is null || profile.SegmentRms.Count == 0)
@@ -209,9 +232,16 @@ public sealed class WaveformView : Control
 
         var segmentCount = profile.SegmentRms.Count;
         var points = new List<Point>(segmentCount);
+        var endFrame = startFrame + visibleFrames;
         for (var segment = 0; segment < segmentCount; segment++)
         {
-            var x = bounds.X + (segment / (double)Math.Max(1, segmentCount - 1)) * bounds.Width;
+            var segmentFrame = segment * profile.SegmentFrames;
+            if (segmentFrame < startFrame || segmentFrame > endFrame)
+            {
+                continue;
+            }
+
+            var x = bounds.X + ((segmentFrame - startFrame) / (double)visibleFrames) * bounds.Width;
             var normalized = profile.SegmentRms[segment] / maxRms;
             var y = bounds.Y + bounds.Height - (normalized * bounds.Height);
             points.Add(new Point(x, y));
