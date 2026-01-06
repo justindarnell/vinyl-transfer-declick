@@ -796,7 +796,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         var flags = new bool[frameCount];
-        var framesPerSegment = Math.Max((sampleRate * 2) / hopSize, 1);
+        var segmentFrames = Math.Max(sampleRate * 2, 1);
+        var framesPerSegment = Math.Max(segmentFrames / hopSize, 1);
         var segmentCount = (frameCount + framesPerSegment - 1) / framesPerSegment;
         var lowThresholds = new float[segmentCount];
         var midThresholds = new float[segmentCount];
@@ -837,7 +838,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         }
 
         transientThresholdSummary = BuildTransientThresholdSummary(
-            framesPerSegment,
+            segmentFrames,
             lowThresholds,
             midThresholds,
             highThresholds);
