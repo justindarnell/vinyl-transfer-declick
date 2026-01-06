@@ -32,6 +32,18 @@
         <TextBlock FontSize="12" Foreground="Gray"
                    Text="Switch between original and cleaned audio previews." />
 
+        <Button Content="Play Preview"
+                Command="{Binding PlayPreviewCommand}"
+                ToolTip.Tip="Play the currently selected preview audio." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Listen to the previewed audio (original or cleaned)." />
+
+        <Button Content="Stop Playback"
+                Command="{Binding StopPreviewCommand}"
+                ToolTip.Tip="Stop audio playback." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Stop playback if it is currently running." />
+
         <Button Content="Export Processed WAV"
                 Command="{Binding ExportProcessedCommand}"
                 ToolTip.Tip="Save the cleaned audio to a new WAV file." />

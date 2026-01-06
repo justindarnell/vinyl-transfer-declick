@@ -4,6 +4,7 @@ using System.Reactive;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using NAudio.Wave;
 using ReactiveUI;
 using VinylTransfer.Core;
 using VinylTransfer.Infrastructure;
@@ -23,6 +24,10 @@ public sealed class MainWindowViewModel : ReactiveObject
     private string? _loadedPath;
     private bool _isPreviewingProcessed;
     private bool _suppressSettingsSave;
+    private WaveOutEvent? _outputDevice;
+    private BufferedWaveProvider? _bufferedProvider;
+    private bool _isPlaying;
+    private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
     private double _clickThreshold = 0.4;
@@ -46,6 +51,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         ImportWavCommand = ReactiveCommand.CreateFromTask(ImportWavAsync);
         AutoCleanCommand = ReactiveCommand.CreateFromTask(ProcessAsync, canProcess);
         PreviewCommand = ReactiveCommand.Create(HandlePreview, canPreview);
+        PlayPreviewCommand = ReactiveCommand.Create(HandlePlayPreview, canProcess);
+        StopPreviewCommand = ReactiveCommand.Create(HandleStopPreview, this.WhenAnyValue(vm => vm.IsPlaying));
         ExportProcessedCommand = ReactiveCommand.CreateFromTask(ExportProcessedAsync, canExportProcessed);
         ExportDifferenceCommand = ReactiveCommand.CreateFromTask(ExportDifferenceAsync, canExportDifference);
 
@@ -53,6 +60,8 @@ public sealed class MainWindowViewModel : ReactiveObject
             .Merge(ExportProcessedCommand.ThrownExceptions)
             .Merge(ExportDifferenceCommand.ThrownExceptions)
             .Merge(PreviewCommand.ThrownExceptions)
+            .Merge(PlayPreviewCommand.ThrownExceptions)
+            .Merge(StopPreviewCommand.ThrownExceptions)
             .Subscribe(ex => StatusMessage = $"Status: {ex.Message}");
 
         LoadSettings();
@@ -67,6 +76,10 @@ public sealed class MainWindowViewModel : ReactiveObject
     public ReactiveCommand<Unit, Unit> AutoCleanCommand { get; }
 
     public ReactiveCommand<Unit, Unit> PreviewCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> PlayPreviewCommand { get; }
+
+    public ReactiveCommand<Unit, Unit> StopPreviewCommand { get; }
 
     public ReactiveCommand<Unit, Unit> ExportProcessedCommand { get; }
 
@@ -191,6 +204,7 @@ public sealed class MainWindowViewModel : ReactiveObject
 
     private async Task ImportWavAsync()
     {
+        StopPlayback(updateStatus: false);
         var dialog = new OpenFileDialog
         {
             AllowMultiple = false,
@@ -228,6 +242,7 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
+        StopPlayback(updateStatus: false);
         StatusMessage = "Status: Cleaning audio...";
         var settings = BuildProcessingSettings();
         var request = new ProcessingRequest(InputBuffer, settings);
@@ -254,7 +269,28 @@ public sealed class MainWindowViewModel : ReactiveObject
         _isPreviewingProcessed = !_isPreviewingProcessed;
         this.RaisePropertyChanged(nameof(DisplayBuffer));
         var source = _isPreviewingProcessed ? "Processed" : "Original";
-        StatusMessage = $"Status: Preview set to {source} audio. (Playback integration coming soon.)";
+        StatusMessage = $"Status: Preview set to {source} audio.";
+
+        if (_isPlaying)
+        {
+            StartPlayback();
+        }
+    }
+
+    private void HandlePlayPreview()
+    {
+        if (DisplayBuffer is null)
+        {
+            StatusMessage = "Status: Load audio before playing.";
+            return;
+        }
+
+        StartPlayback();
+    }
+
+    private void HandleStopPreview()
+    {
+        StopPlayback(updateStatus: true);
     }
 
     private async Task ExportProcessedAsync()
@@ -400,5 +436,71 @@ public sealed class MainWindowViewModel : ReactiveObject
         };
 
         _settingsStore.Save(data);
+    }
+
+    private bool IsPlaying
+    {
+        get => _isPlaying;
+        set => this.RaiseAndSetIfChanged(ref _isPlaying, value);
+    }
+
+    private void StartPlayback()
+    {
+        var buffer = DisplayBuffer;
+        if (buffer is null)
+        {
+            return;
+        }
+
+        StopPlayback(updateStatus: false);
+
+        var format = WaveFormat.CreateIeeeFloatWaveFormat(buffer.SampleRate, buffer.Channels);
+        _bufferedProvider = new BufferedWaveProvider(format)
+        {
+            DiscardOnBufferOverflow = true
+        };
+
+        var bytes = new byte[buffer.Samples.Length * sizeof(float)];
+        Buffer.BlockCopy(buffer.Samples, 0, bytes, 0, bytes.Length);
+        _bufferedProvider.AddSamples(bytes, 0, bytes.Length);
+
+        _outputDevice = new WaveOutEvent();
+        _playbackStoppedHandler = (_, _) =>
+        {
+            IsPlaying = false;
+            StopPlayback(updateStatus: true, stopDevice: false);
+        };
+        _outputDevice.PlaybackStopped += _playbackStoppedHandler;
+        _outputDevice.Init(_bufferedProvider);
+        _outputDevice.Play();
+        IsPlaying = true;
+        StatusMessage = "Status: Playing preview audio.";
+    }
+
+    private void StopPlayback(bool updateStatus, bool stopDevice = true)
+    {
+        if (_outputDevice is null)
+        {
+            IsPlaying = false;
+            return;
+        }
+
+        if (_playbackStoppedHandler is not null)
+        {
+            _outputDevice.PlaybackStopped -= _playbackStoppedHandler;
+            _playbackStoppedHandler = null;
+        }
+        if (stopDevice)
+        {
+            _outputDevice.Stop();
+        }
+        _outputDevice.Dispose();
+        _outputDevice = null;
+        _bufferedProvider = null;
+        IsPlaying = false;
+        if (updateStatus)
+        {
+            StatusMessage = "Status: Playback stopped.";
+        }
     }
 }
