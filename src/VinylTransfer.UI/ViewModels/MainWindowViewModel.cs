@@ -16,6 +16,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private double _progressValue;
     private bool _isProcessing;
     private CancellationTokenSource? _cancellationTokenSource;
+    private bool _disposed;
     private bool _useAutoMode = true;
     private float _autoClickSensitivity = 0.55f;
     private float _autoPopSensitivity = 0.5f;
@@ -199,6 +200,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         var request = new ProcessingRequest(_inputBuffer, settings);
         var progress = new Progress<ProcessingProgress>(UpdateProgress);
 
+        _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = new CancellationTokenSource();
 
@@ -316,7 +318,15 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = null;
+        _disposed = true;
     }
 }
 
