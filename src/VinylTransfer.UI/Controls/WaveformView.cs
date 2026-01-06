@@ -317,10 +317,10 @@ public sealed class WaveformView : Control
             points.Add(new Point(x, y));
         }
 
+        var noiseOpacity = Math.Clamp(NoiseProfileOpacity, 0.1d, 1d);
+        var pen = CreatePenWithOpacity(Colors.LightGray, noiseOpacity, dashed: true);
         for (var i = 1; i < points.Count; i++)
         {
-            var noiseOpacity = Math.Clamp(NoiseProfileOpacity, 0.1d, 1d);
-            var pen = CreatePenWithOpacity(Colors.LightGray, noiseOpacity, dashed: true);
             context.DrawLine(pen, points[i - 1], points[i]);
         }
     }

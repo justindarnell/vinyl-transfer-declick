@@ -620,6 +620,10 @@ public sealed class DspAudioProcessor : IAudioProcessor
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var spectrum = spectra[frame];
+                // Per-frame spectral smoothing is used for spectral masking calculation.
+                // This local smoothing adapts to the current frame's spectrum, allowing the
+                // masking to preserve signal components that are close in frequency to strong
+                // tonal content. This is in addition to the global noise profile smoothing.
                 var smoothedSpectrum = SmoothSpectrumMagnitudes(spectrum, 4);
                 for (var i = 0; i < spectrum.Length; i++)
                 {
@@ -715,13 +719,12 @@ public sealed class DspAudioProcessor : IAudioProcessor
             var start = Math.Max(0, i - radius);
             var end = Math.Min(profile.Length - 1, i + radius);
             float total = 0;
-            var count = 0;
             for (var j = start; j <= end; j++)
             {
                 total += profile[j];
-                count++;
             }
 
+            var count = end - start + 1;
             smoothed[i] = count > 0 ? total / count : profile[i];
         }
 
@@ -741,7 +744,23 @@ public sealed class DspAudioProcessor : IAudioProcessor
             magnitudes[i] = (float)spectrum[i].Magnitude;
         }
 
-        return SmoothProfile(magnitudes, radius);
+        // Smooth in-place to avoid double allocation
+        var smoothed = new float[spectrum.Length];
+        for (var i = 0; i < magnitudes.Length; i++)
+        {
+            var start = Math.Max(0, i - radius);
+            var end = Math.Min(magnitudes.Length - 1, i + radius);
+            float total = 0;
+            for (var j = start; j <= end; j++)
+            {
+                total += magnitudes[j];
+            }
+
+            var count = end - start + 1;
+            smoothed[i] = count > 0 ? total / count : magnitudes[i];
+        }
+
+        return smoothed;
     }
 
     private static float[] BuildHannWindow(int size)
@@ -926,10 +945,49 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var length = end - start;
         var buffer = new float[length];
         Array.Copy(values, start, buffer, 0, length);
-        Array.Sort(buffer);
+        
         var clamped = Math.Clamp(percentile, 0f, 1f);
-        var index = (int)MathF.Floor((buffer.Length - 1) * clamped);
-        return buffer[index];
+        var targetIndex = (int)MathF.Floor((buffer.Length - 1) * clamped);
+        
+        // Use QuickSelect for O(n) average case performance instead of O(n log n) sort
+        return QuickSelect(buffer, 0, buffer.Length - 1, targetIndex);
+    }
+
+    private static float QuickSelect(float[] array, int left, int right, int k)
+    {
+        while (left < right)
+        {
+            var pivotIndex = Partition(array, left, right);
+            if (pivotIndex == k)
+            {
+                return array[k];
+            }
+            else if (k < pivotIndex)
+            {
+                right = pivotIndex - 1;
+            }
+            else
+            {
+                left = pivotIndex + 1;
+            }
+        }
+        return array[left];
+    }
+
+    private static int Partition(float[] array, int left, int right)
+    {
+        var pivot = array[right];
+        var i = left;
+        for (var j = left; j < right; j++)
+        {
+            if (array[j] <= pivot)
+            {
+                (array[i], array[j]) = (array[j], array[i]);
+                i++;
+            }
+        }
+        (array[i], array[right]) = (array[right], array[i]);
+        return i;
     }
 
     private static float Median(IReadOnlyList<float> values)

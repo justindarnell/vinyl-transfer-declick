@@ -38,6 +38,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private bool _isPlaying;
     private long _playbackPosition;
     private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
+    private System.Threading.CancellationTokenSource? _scrubSaveCts;
+    private System.Threading.CancellationTokenSource? _eventIndexSaveCts;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
     private double _clickThreshold = 0.4;
@@ -366,7 +368,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _scrubPosition, value);
             this.RaisePropertyChanged(nameof(ScrubTimecode));
-            SaveSettings();
+            DebounceSaveSettings(ref _scrubSaveCts, 500);
         }
     }
 
@@ -384,7 +386,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         set
         {
             this.RaiseAndSetIfChanged(ref _selectedEventIndex, value);
-            SaveSettings();
+            DebounceSaveSettings(ref _eventIndexSaveCts, 500);
         }
     }
 
@@ -633,7 +635,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlayEventPreview()
     {
-        if (InputBuffer is null)
+        var buffer = DisplayBuffer;
+        if (buffer is null)
         {
             StatusMessage = "Status: Load audio before playing.";
             return;
@@ -652,7 +655,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         }
 
         var selectedEvent = DetectedEvents[SelectedEventIndex];
-        var previewBuffer = BuildEventPreviewBuffer(InputBuffer, selectedEvent.Frame);
+        var previewBuffer = BuildEventPreviewBuffer(buffer, selectedEvent.Frame);
         StartPlayback(previewBuffer, resumeFromPosition: false);
         StatusMessage = $"Status: Previewing event {SelectedEventIndex + 1}/{DetectedEvents.Count}.";
     }
@@ -843,7 +846,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         if (InputBuffer is null || DetectedEvents.Count == 0)
         {
             DetectedEventOptions = Array.Empty<string>();
+            // Don't persist the reset to 0 when events are cleared
+            _suppressSettingsSave = true;
             SelectedEventIndex = 0;
+            _suppressSettingsSave = false;
             return;
         }
 
@@ -916,6 +922,31 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         LoopPreview = settings.LoopPreview;
         LoopRepeats = settings.LoopRepeats;
         _suppressSettingsSave = false;
+    }
+
+    private void DebounceSaveSettings(ref System.Threading.CancellationTokenSource? cts, int delayMs)
+    {
+        // Cancel any pending save
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = new System.Threading.CancellationTokenSource();
+        
+        var token = cts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delayMs, token);
+                if (!token.IsCancellationRequested)
+                {
+                    SaveSettings();
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // Expected when debouncing
+            }
+        }, token);
     }
 
     private void SaveSettings()
@@ -1030,6 +1061,11 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void StartPlayback(AudioBuffer buffer, bool resumeFromPosition)
     {
+        if (buffer is null)
+        {
+            return;
+        }
+
         StopPlayback(updateStatus: false);
 
         if (!resumeFromPosition)
@@ -1108,11 +1144,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         var bytesPlayed = _outputDevice.GetPosition();
         var bytesPerSample = sizeof(float) * outputFormat.Channels;
         var samplesPlayed = bytesPlayed / bytesPerSample;
+        var framesPlayed = samplesPlayed / outputFormat.Channels;
         
-        _playbackPosition = samplesPlayed;
+        _playbackPosition = framesPlayed;
         if (DisplayBuffer is not null && DisplayBuffer.FrameCount > 0)
         {
-            ScrubPosition = Math.Clamp(samplesPlayed / (double)DisplayBuffer.FrameCount, 0d, 1d);
+            ScrubPosition = Math.Clamp(framesPlayed / (double)DisplayBuffer.FrameCount, 0d, 1d);
         }
     }
 
@@ -1154,6 +1191,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     public void Dispose()
     {
+        _scrubSaveCts?.Cancel();
+        _scrubSaveCts?.Dispose();
+        _eventIndexSaveCts?.Cancel();
+        _eventIndexSaveCts?.Dispose();
         StopPlayback(updateStatus: false);
         _disposables.Dispose();
     }
@@ -1163,7 +1204,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         var sampleRate = buffer.SampleRate;
         var channels = buffer.Channels;
         var previewFrames = (int)Math.Max(64, Math.Round(EventPreviewMs * sampleRate / 1000d));
-        var startFrame = Math.Clamp(eventFrame - (previewFrames / 2), 0, Math.Max(0, buffer.FrameCount - previewFrames));
+        var safeEventFrame = Math.Clamp(eventFrame, 0, Math.Max(0, buffer.FrameCount - 1));
+        var startFrame = Math.Clamp(safeEventFrame - (previewFrames / 2), 0, Math.Max(0, buffer.FrameCount - previewFrames));
         var frames = Math.Min(previewFrames, buffer.FrameCount - startFrame);
         var preview = new float[frames * channels];
         Array.Copy(buffer.Samples, startFrame * channels, preview, 0, preview.Length);
