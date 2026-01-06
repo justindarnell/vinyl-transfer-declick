@@ -7,5 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../VinylTransfer.Core/VinylTransfer.Core.csproj" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="ManagedBass" Version="3.2.2" />
+    <PackageReference Include="ManagedBass.Native" Version="3.2.2" />
   </ItemGroup>
 </Project>
