@@ -13,54 +13,72 @@
                Text="Vinyl Transfer Cleanup" />
 
     <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
-      <StackPanel Spacing="12">
-        <Button Content="Import WAV"
-                Command="{Binding ImportWavCommand}"
-                ToolTip.Tip="Load a WAV file from disk so it can be analyzed and cleaned." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Choose a WAV recording to inspect and clean." />
+      <StackPanel Spacing="16">
+        <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="1. Import" />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Load a WAV so it can be analyzed and cleaned." />
+            <Button Content="Import WAV"
+                    Command="{Binding ImportWavCommand}"
+                    ToolTip.Tip="Load a WAV file from disk so it can be analyzed and cleaned." />
+          </StackPanel>
+        </Border>
 
-        <Button Content="Auto Clean"
-                Command="{Binding AutoCleanCommand}"
-                ToolTip.Tip="Run the cleanup pass using the current settings." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Analyze the loaded audio and reduce clicks, pops, and noise." />
+        <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="2. Analyze & Tune" />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Get suggested settings or tweak the sliders below." />
+            <Button Content="Recommend Settings"
+                    Command="{Binding RecommendSettingsCommand}"
+                    ToolTip.Tip="Scan the audio and suggest slider values." />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Analyze the recording and suggest cleanup settings." />
+            <Button Content="Auto Clean"
+                    Command="{Binding AutoCleanCommand}"
+                    ToolTip.Tip="Run the cleanup pass using the current settings." />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Apply cleanup with the current settings." />
+          </StackPanel>
+        </Border>
 
-        <Button Content="Recommend Settings"
-                Command="{Binding RecommendSettingsCommand}"
-                ToolTip.Tip="Scan the audio and suggest slider values." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Analyze the recording and suggest cleanup settings." />
+        <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="3. Preview" />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Compare original vs. cleaned audio." />
+            <Button Content="A/B Preview"
+                    Command="{Binding PreviewCommand}"
+                    ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Switch between original and cleaned audio previews." />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Play Preview"
+                      Command="{Binding PlayPreviewCommand}"
+                      ToolTip.Tip="Play the currently selected preview audio." />
+              <Button Content="Stop Playback"
+                      Command="{Binding StopPreviewCommand}"
+                      ToolTip.Tip="Stop audio playback." />
+            </StackPanel>
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Listen to the selected preview." />
+          </StackPanel>
+        </Border>
 
-        <Button Content="A/B Preview"
-                Command="{Binding PreviewCommand}"
-                ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Switch between original and cleaned audio previews." />
-
-        <Button Content="Play Preview"
-                Command="{Binding PlayPreviewCommand}"
-                ToolTip.Tip="Play the currently selected preview audio." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Listen to the previewed audio (original or cleaned)." />
-
-        <Button Content="Stop Playback"
-                Command="{Binding StopPreviewCommand}"
-                ToolTip.Tip="Stop audio playback." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Stop playback if it is currently running." />
-
-        <Button Content="Export Processed WAV"
-                Command="{Binding ExportProcessedCommand}"
-                ToolTip.Tip="Save the cleaned audio to a new WAV file." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Write the cleaned audio to disk." />
-
-        <Button Content="Export Difference WAV"
-                Command="{Binding ExportDifferenceCommand}"
-                ToolTip.Tip="Save only what was removed (useful for auditing cleanup)." />
-        <TextBlock FontSize="12" Foreground="Gray"
-                   Text="Export the removed noise as a separate WAV." />
+        <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="4. Export" />
+            <TextBlock FontSize="12" Foreground="Gray"
+                       Text="Save the cleaned audio, or export the removed noise." />
+            <Button Content="Export Processed WAV"
+                    Command="{Binding ExportProcessedCommand}"
+                    ToolTip.Tip="Save the cleaned audio to a new WAV file." />
+            <Button Content="Export Difference WAV"
+                    Command="{Binding ExportDifferenceCommand}"
+                    ToolTip.Tip="Save only what was removed (useful for auditing cleanup)." />
+          </StackPanel>
+        </Border>
 
         <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
 
