@@ -9,7 +9,7 @@ using VinylTransfer.Infrastructure;
 
 namespace VinylTransfer.UI.ViewModels;
 
-public sealed class MainWindowViewModel : ReactiveObject
+public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 {
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
     private string _progressStage = "Idle";
@@ -312,6 +312,11 @@ public sealed class MainWindowViewModel : ReactiveObject
             ManualNoiseReduction);
 
         return new ProcessingSettings(auto, manual, UseAutoMode);
+    }
+
+    public void Dispose()
+    {
+        _cancellationTokenSource?.Dispose();
     }
 }
 

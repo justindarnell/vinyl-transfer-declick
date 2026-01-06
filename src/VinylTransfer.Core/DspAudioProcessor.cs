@@ -98,17 +98,16 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var channels = input.Channels;
         var frameCount = input.FrameCount;
         var progressInterval = Math.Max(1, frameCount / 60);
+        var cancellationCheckInterval = Math.Max(1, frameCount / 10); // Check cancellation 10 times during processing
         for (var frame = 0; frame < frameCount; frame++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (frame % cancellationCheckInterval == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             for (var channel = 0; channel < channels; channel++)
             {
-                // Periodically check for cancellation within the inner loop to improve responsiveness
-                if ((channel & 0x3F) == 0) // every 64 channels
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                }
-
                 var index = frame * channels + channel;
                 var sample = samples[index];
                 var abs = MathF.Abs(sample);
