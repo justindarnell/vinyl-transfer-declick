@@ -52,12 +52,22 @@ public sealed class WaveformView : Control
         var width = Math.Max(1, (int)Math.Floor(bounds.Width));
         var channels = Math.Max(1, buffer.Channels);
         var samples = buffer.Samples;
-        var framesPerPixel = Math.Max(1, frameCount / width);
 
         for (var x = 0; x < width; x++)
         {
-            var startFrame = x * framesPerPixel;
-            var endFrame = Math.Min(frameCount - 1, (x + 1) * framesPerPixel);
+            var startFrame = (int)Math.Floor(frameCount * (x / (double)width));
+            var endFrame = (int)Math.Floor(frameCount * ((x + 1) / (double)width)) - 1;
+            if (endFrame < startFrame)
+            {
+                endFrame = startFrame;
+            }
+
+            if (startFrame >= frameCount)
+            {
+                break;
+            }
+
+            endFrame = Math.Min(frameCount - 1, endFrame);
             var maxAmplitude = 0f;
 
             for (var frame = startFrame; frame <= endFrame; frame++)
