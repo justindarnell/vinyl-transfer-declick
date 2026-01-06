@@ -11,6 +11,6 @@ public sealed record ProcessingDiagnostics(
     int DecracklesDetected,
     int ResidualClicks,
     float EstimatedNoiseFloor,
-    float SnrImprovementDb,
+    float ProcessingGainDb,
     float DeltaRms
 );
