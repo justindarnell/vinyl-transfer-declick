@@ -53,7 +53,8 @@ public sealed class DspAudioProcessor : IAudioProcessor
         out int popsDetected,
         out float noiseFloor)
     {
-        noiseFloor = EstimateNoiseFloor(samples);
+        var estimatedNoiseFloor = EstimateNoiseFloor(samples);
+        noiseFloor = settings.UseAutoMode ? estimatedNoiseFloor : settings.ManualMode.NoiseFloor;
 
         var clickThreshold = settings.UseAutoMode
             ? noiseFloor * (1f + settings.AutoMode.ClickSensitivity * 8f)
@@ -96,7 +97,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             }
         }
 
-        return noiseFloor;
+        return estimatedNoiseFloor;
     }
 
     private static float EstimateNoiseFloor(float[] samples)

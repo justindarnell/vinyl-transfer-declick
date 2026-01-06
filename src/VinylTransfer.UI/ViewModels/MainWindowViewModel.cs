@@ -201,11 +201,12 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        var defaultName = BuildDefaultExportName("cleaned");
+        var (directory, defaultName) = BuildDefaultExportName("cleaned");
         var dialog = new SaveFileDialog
         {
             Title = "Export processed WAV",
             InitialFileName = defaultName,
+            Directory = directory,
             Filters =
             {
                 new FileDialogFilter { Name = "WAV files", Extensions = { "wav" } },
@@ -233,11 +234,12 @@ public sealed class MainWindowViewModel : ReactiveObject
             return;
         }
 
-        var defaultName = BuildDefaultExportName("difference");
+        var (directory, defaultName) = BuildDefaultExportName("difference");
         var dialog = new SaveFileDialog
         {
             Title = "Export difference WAV",
             InitialFileName = defaultName,
+            Directory = directory,
             Filters =
             {
                 new FileDialogFilter { Name = "WAV files", Extensions = { "wav" } },
@@ -291,15 +293,15 @@ public sealed class MainWindowViewModel : ReactiveObject
         return duration.ToString(duration.TotalHours >= 1 ? "h\\:mm\\:ss" : "m\\:ss");
     }
 
-    private string BuildDefaultExportName(string suffix)
+    private (string? directory, string fileName) BuildDefaultExportName(string suffix)
     {
         if (!string.IsNullOrWhiteSpace(_loadedPath))
         {
             var directory = Path.GetDirectoryName(_loadedPath);
             var name = Path.GetFileNameWithoutExtension(_loadedPath);
-            return Path.Combine(directory ?? string.Empty, $"{name}-{suffix}.wav");
+            return (directory, $"{name}-{suffix}.wav");
         }
 
-        return $"export-{suffix}.wav";
+        return (null, $"export-{suffix}.wav");
     }
 }
