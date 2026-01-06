@@ -32,7 +32,7 @@
                        Text="Get suggested settings or tweak the sliders below." />
             <TextBlock FontSize="12" Foreground="Gray"
                        Text="Choose a preset to jump-start common vinyl profiles." />
-            <ComboBox Items="{Binding PresetOptions}"
+            <ComboBox ItemsSource="{Binding PresetOptions}"
                       SelectedItem="{Binding SelectedPreset}"
                       DisplayMemberBinding="{Binding Name}"
                       ToolTip.Tip="Select a preset tuned for common vinyl profiles." />
