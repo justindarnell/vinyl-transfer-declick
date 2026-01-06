@@ -401,7 +401,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         StatusMessage = $"Status: Cleaned audio in {result.Diagnostics.ProcessingTime.TotalMilliseconds:F0} ms · " +
                         $"Clicks: {result.Diagnostics.ClicksDetected} · Pops: {result.Diagnostics.PopsDetected} · " +
                         $"Decrackle: {result.Diagnostics.DecracklesDetected} · Residual clicks: {result.Diagnostics.ResidualClicks} · " +
-                        $"SNR gain: {result.Diagnostics.SnrImprovementDb:F1} dB · ΔRMS: {result.Diagnostics.DeltaRms:F4} · " +
+                        $"Processing gain: {result.Diagnostics.ProcessingGainDb:F1} dB · ΔRMS: {result.Diagnostics.DeltaRms:F4} · " +
                         $"Estimated noise floor: {result.Diagnostics.EstimatedNoiseFloor:F4}.";
     }
 

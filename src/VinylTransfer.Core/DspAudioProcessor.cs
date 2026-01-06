@@ -80,7 +80,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
         var diffBuffer = new AudioBuffer(difference, input.SampleRate, input.Channels);
         var residualClicks = CountResidualClicks(processedSamples, input, settings, noiseFloor);
         var deltaRms = ComputeRms(processedSamples) - ComputeRms(samples);
-        var snrImprovementDb = EstimateSnrImprovement(samples, difference);
+        var processingGainDb = ComputeProcessingGain(samples, difference);
         var resultDiagnostics = new ProcessingDiagnostics(
             stopwatch.Elapsed,
             clicksDetected,
@@ -88,7 +88,7 @@ public sealed class DspAudioProcessor : IAudioProcessor
             decracklesDetected,
             residualClicks,
             noiseFloor,
-            snrImprovementDb,
+            processingGainDb,
             deltaRms);
         var artifacts = new ProcessingArtifacts(detectedEvents, AudioAnalysis.BuildNoiseProfile(input));
 
@@ -366,7 +366,11 @@ public sealed class DspAudioProcessor : IAudioProcessor
         return (float)Math.Sqrt(sumSq / samples.Length);
     }
 
-    private static float EstimateSnrImprovement(float[] inputSamples, float[] differenceSamples)
+    /// <summary>
+    /// Computes the processing gain in dB, representing the ratio of input signal to removed content.
+    /// This measures how much was removed relative to the original signal, not true SNR improvement.
+    /// </summary>
+    private static float ComputeProcessingGain(float[] inputSamples, float[] differenceSamples)
     {
         var inputRms = ComputeRms(inputSamples);
         var diffRms = ComputeRms(differenceSamples);
