@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using ReactiveUI;
 using VinylTransfer.Core;
 using VinylTransfer.Infrastructure;
+using VinylTransfer.UI;
 
 namespace VinylTransfer.UI.ViewModels;
 
@@ -14,12 +15,14 @@ public sealed class MainWindowViewModel : ReactiveObject
 {
     private readonly WavFileService _wavFileService = new();
     private readonly DspAudioProcessor _processor = new();
+    private readonly SettingsStore _settingsStore = new();
 
     private AudioBuffer? _inputBuffer;
     private AudioBuffer? _processedBuffer;
     private AudioBuffer? _differenceBuffer;
     private string? _loadedPath;
     private bool _isPreviewingProcessed;
+    private bool _suppressSettingsSave;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
     private double _clickThreshold = 0.4;
@@ -51,6 +54,8 @@ public sealed class MainWindowViewModel : ReactiveObject
             .Merge(ExportDifferenceCommand.ThrownExceptions)
             .Merge(PreviewCommand.ThrownExceptions)
             .Subscribe(ex => StatusMessage = $"Status: {ex.Message}");
+
+        LoadSettings();
     }
 
     public Interaction<OpenFileDialog, string?> OpenFileInteraction { get; }
@@ -76,37 +81,73 @@ public sealed class MainWindowViewModel : ReactiveObject
     public double ClickThreshold
     {
         get => _clickThreshold;
-        set => this.RaiseAndSetIfChanged(ref _clickThreshold, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _clickThreshold, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public double ClickIntensity
     {
         get => _clickIntensity;
-        set => this.RaiseAndSetIfChanged(ref _clickIntensity, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _clickIntensity, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public double PopThreshold
     {
         get => _popThreshold;
-        set => this.RaiseAndSetIfChanged(ref _popThreshold, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _popThreshold, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public double PopIntensity
     {
         get => _popIntensity;
-        set => this.RaiseAndSetIfChanged(ref _popIntensity, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _popIntensity, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public double NoiseFloorDb
     {
         get => _noiseFloorDb;
-        set => this.RaiseAndSetIfChanged(ref _noiseFloorDb, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _noiseFloorDb, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public double NoiseReductionAmount
     {
         get => _noiseReductionAmount;
-        set => this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value);
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value))
+            {
+                SaveSettings();
+            }
+        }
     }
 
     public AudioBuffer? DisplayBuffer
@@ -326,5 +367,38 @@ public sealed class MainWindowViewModel : ReactiveObject
         }
 
         return (null, $"export-{suffix}.wav");
+    }
+
+    private void LoadSettings()
+    {
+        _suppressSettingsSave = true;
+        var settings = _settingsStore.Load();
+        ClickThreshold = settings.ClickThreshold;
+        ClickIntensity = settings.ClickIntensity;
+        PopThreshold = settings.PopThreshold;
+        PopIntensity = settings.PopIntensity;
+        NoiseFloorDb = settings.NoiseFloorDb;
+        NoiseReductionAmount = settings.NoiseReductionAmount;
+        _suppressSettingsSave = false;
+    }
+
+    private void SaveSettings()
+    {
+        if (_suppressSettingsSave)
+        {
+            return;
+        }
+
+        var data = new SettingsData
+        {
+            ClickThreshold = ClickThreshold,
+            ClickIntensity = ClickIntensity,
+            PopThreshold = PopThreshold,
+            PopIntensity = PopIntensity,
+            NoiseFloorDb = NoiseFloorDb,
+            NoiseReductionAmount = NoiseReductionAmount
+        };
+
+        _settingsStore.Save(data);
     }
 }

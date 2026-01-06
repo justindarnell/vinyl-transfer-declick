@@ -14,28 +14,97 @@
 
     <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
       <StackPanel Spacing="12">
-        <Button Content="Import WAV" Command="{Binding ImportWavCommand}" />
-        <Button Content="Auto Clean" Command="{Binding AutoCleanCommand}" />
-        <Button Content="A/B Preview" Command="{Binding PreviewCommand}" />
-        <Button Content="Export Processed WAV" Command="{Binding ExportProcessedCommand}" />
-        <Button Content="Export Difference WAV" Command="{Binding ExportDifferenceCommand}" />
+        <Button Content="Import WAV"
+                Command="{Binding ImportWavCommand}"
+                ToolTip.Tip="Load a WAV file from disk so it can be analyzed and cleaned." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Choose a WAV recording to inspect and clean." />
+
+        <Button Content="Auto Clean"
+                Command="{Binding AutoCleanCommand}"
+                ToolTip.Tip="Run the cleanup pass using the current settings." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Analyze the loaded audio and reduce clicks, pops, and noise." />
+
+        <Button Content="A/B Preview"
+                Command="{Binding PreviewCommand}"
+                ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Switch between original and cleaned audio previews." />
+
+        <Button Content="Export Processed WAV"
+                Command="{Binding ExportProcessedCommand}"
+                ToolTip.Tip="Save the cleaned audio to a new WAV file." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Write the cleaned audio to disk." />
+
+        <Button Content="Export Difference WAV"
+                Command="{Binding ExportDifferenceCommand}"
+                ToolTip.Tip="Save only what was removed (useful for auditing cleanup)." />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Export the removed noise as a separate WAV." />
 
         <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
 
         <TextBlock Text="Click Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="{Binding ClickThreshold}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Higher values focus on only the loudest clicks." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding ClickThreshold}"
+                  ToolTip.Tip="Sensitivity for detecting short, sharp clicks." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ClickThreshold, StringFormat={}{0:0.00}}" />
+        </Grid>
+
         <TextBlock Text="Click Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="{Binding ClickIntensity}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="How strongly detected clicks are smoothed out." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding ClickIntensity}"
+                  ToolTip.Tip="Strength of click repair (0 = light, 1 = strong)." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding ClickIntensity, StringFormat={}{0:0.00}}" />
+        </Grid>
 
         <TextBlock Text="Pop Threshold" />
-        <Slider Minimum="0" Maximum="1" Value="{Binding PopThreshold}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Higher values focus on only the most obvious pops." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding PopThreshold}"
+                  ToolTip.Tip="Sensitivity for detecting longer pops." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding PopThreshold, StringFormat={}{0:0.00}}" />
+        </Grid>
+
         <TextBlock Text="Pop Intensity" />
-        <Slider Minimum="0" Maximum="1" Value="{Binding PopIntensity}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="How strongly detected pops are smoothed out." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding PopIntensity}"
+                  ToolTip.Tip="Strength of pop repair (0 = light, 1 = strong)." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding PopIntensity, StringFormat={}{0:0.00}}" />
+        </Grid>
 
         <TextBlock Text="Noise Floor" />
-        <Slider Minimum="-90" Maximum="-20" Value="{Binding NoiseFloorDb}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="Estimate the quietest background level to reduce hiss." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="-90" Maximum="-20" Value="{Binding NoiseFloorDb}"
+                  ToolTip.Tip="Background noise level in dB (lower = quieter)." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding NoiseFloorDb, StringFormat={}{0:0} dB}" />
+        </Grid>
+
         <TextBlock Text="Noise Reduction" />
-        <Slider Minimum="0" Maximum="1" Value="{Binding NoiseReductionAmount}" />
+        <TextBlock FontSize="12" Foreground="Gray"
+                   Text="How much quiet background noise to reduce." />
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <Slider Minimum="0" Maximum="1" Value="{Binding NoiseReductionAmount}"
+                  ToolTip.Tip="0 = none, 1 = maximum reduction." />
+          <TextBlock Grid.Column="1" Margin="8,0,0,0"
+                     Text="{Binding NoiseReductionAmount, StringFormat={}{0:0.00}}" />
+        </Grid>
       </StackPanel>
     </ScrollViewer>
 
