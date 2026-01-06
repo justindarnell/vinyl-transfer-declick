@@ -10,6 +10,9 @@ namespace VinylTransfer.UI;
 
 public sealed partial class MainWindow : Window
 {
+    private IDisposable? _openFileDialogHandler;
+    private IDisposable? _saveFileDialogHandler;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -19,10 +22,15 @@ public sealed partial class MainWindow : Window
     {
         base.OnDataContextChanged(e);
 
+        // Unregister handlers from previous ViewModel
+        _openFileDialogHandler?.Dispose();
+        _saveFileDialogHandler?.Dispose();
+
+        // Register handlers for new ViewModel
         if (DataContext is MainWindowViewModel viewModel)
         {
-            viewModel.OpenFileDialog.RegisterHandler(HandleOpenFileDialogAsync);
-            viewModel.SaveFileDialog.RegisterHandler(HandleSaveFileDialogAsync);
+            _openFileDialogHandler = viewModel.OpenFileDialog.RegisterHandler(HandleOpenFileDialogAsync);
+            _saveFileDialogHandler = viewModel.SaveFileDialog.RegisterHandler(HandleSaveFileDialogAsync);
         }
     }
 
