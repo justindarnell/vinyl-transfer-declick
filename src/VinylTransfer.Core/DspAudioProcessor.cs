@@ -376,14 +376,14 @@ public sealed class DspAudioProcessor : IAudioProcessor
                 var spectrum = spectra[frame];
                 for (var i = 0; i < spectrum.Length; i++)
                 {
-                    var magnitude = spectrum[i].Magnitude;
+                    var magnitude = (float)spectrum[i].Magnitude;
                     var noise = noiseProfile[i];
                     if (magnitude <= 0f)
                     {
                         continue;
                     }
 
-                    var reduced = Math.Max(magnitude - noise * reductionAmount, magnitude * minGain);
+                    var reduced = MathF.Max(magnitude - noise * reductionAmount, magnitude * minGain);
                     var targetGain = reduced / magnitude;
                     var smoothedGain = (TemporalSmoothing * previousGain[i]) + ((1f - TemporalSmoothing) * targetGain);
                     previousGain[i] = smoothedGain;
