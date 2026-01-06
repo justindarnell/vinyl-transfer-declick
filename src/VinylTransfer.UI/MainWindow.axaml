@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:VinylTransfer.UI.Controls"
         mc:Ignorable="d"
         x:Class="VinylTransfer.UI.MainWindow"
         Title="Vinyl Transfer DeClick"
@@ -41,7 +42,7 @@
     <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*" Margin="0,16,0,0">
       <TextBlock Text="Waveform" FontWeight="SemiBold" />
       <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8">
-        <TextBlock Text="Waveform view placeholder" Foreground="Gray" />
+        <controls:WaveformView Buffer="{Binding DisplayBuffer}" />
       </Border>
 
       <TextBlock Grid.Row="2" Text="Spectrogram" FontWeight="SemiBold" Margin="0,16,0,0" />

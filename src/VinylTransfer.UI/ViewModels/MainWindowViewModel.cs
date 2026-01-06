@@ -109,16 +109,37 @@ public sealed class MainWindowViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value);
     }
 
+    public AudioBuffer? DisplayBuffer
+    {
+        get
+        {
+            if (_isPreviewingProcessed && ProcessedBuffer is not null)
+            {
+                return ProcessedBuffer;
+            }
+
+            return InputBuffer ?? ProcessedBuffer;
+        }
+    }
+
     private AudioBuffer? InputBuffer
     {
         get => _inputBuffer;
-        set => this.RaiseAndSetIfChanged(ref _inputBuffer, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _inputBuffer, value);
+            this.RaisePropertyChanged(nameof(DisplayBuffer));
+        }
     }
 
     private AudioBuffer? ProcessedBuffer
     {
         get => _processedBuffer;
-        set => this.RaiseAndSetIfChanged(ref _processedBuffer, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _processedBuffer, value);
+            this.RaisePropertyChanged(nameof(DisplayBuffer));
+        }
     }
 
     private AudioBuffer? DifferenceBuffer
@@ -174,6 +195,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         ProcessedBuffer = result.Processed;
         DifferenceBuffer = result.Difference;
         _isPreviewingProcessed = true;
+        this.RaisePropertyChanged(nameof(DisplayBuffer));
 
         StatusMessage = $"Status: Cleaned audio in {result.Diagnostics.ProcessingTime.TotalMilliseconds:F0} ms · " +
                         $"Clicks: {result.Diagnostics.ClicksDetected} · Pops: {result.Diagnostics.PopsDetected} · " +
@@ -189,6 +211,7 @@ public sealed class MainWindowViewModel : ReactiveObject
         }
 
         _isPreviewingProcessed = !_isPreviewingProcessed;
+        this.RaisePropertyChanged(nameof(DisplayBuffer));
         var source = _isPreviewingProcessed ? "Processed" : "Original";
         StatusMessage = $"Status: Preview set to {source} audio. (Playback integration coming soon.)";
     }
