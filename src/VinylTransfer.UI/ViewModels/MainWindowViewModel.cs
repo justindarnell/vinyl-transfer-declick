@@ -96,10 +96,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _clickThreshold;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _clickThreshold, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _clickThreshold, value);
+            SaveSettings();
         }
     }
 
@@ -108,10 +106,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _clickIntensity;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _clickIntensity, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _clickIntensity, value);
+            SaveSettings();
         }
     }
 
@@ -120,10 +116,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _popThreshold;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _popThreshold, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _popThreshold, value);
+            SaveSettings();
         }
     }
 
@@ -132,10 +126,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _popIntensity;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _popIntensity, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _popIntensity, value);
+            SaveSettings();
         }
     }
 
@@ -144,10 +136,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _noiseFloorDb;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _noiseFloorDb, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _noiseFloorDb, value);
+            SaveSettings();
         }
     }
 
@@ -156,10 +146,8 @@ public sealed class MainWindowViewModel : ReactiveObject
         get => _noiseReductionAmount;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value))
-            {
-                SaveSettings();
-            }
+            this.RaiseAndSetIfChanged(ref _noiseReductionAmount, value);
+            SaveSettings();
         }
     }
 
