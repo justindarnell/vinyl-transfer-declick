@@ -962,7 +962,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
                     await Task.Delay(delayMs, token);
                     if (!token.IsCancellationRequested)
                     {
-                        SaveSettings();
+                        Dispatcher.UIThread.Post(SaveSettings);
                     }
                 }
                 catch (TaskCanceledException)
