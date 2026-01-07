@@ -615,7 +615,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported on Windows and macOS.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -632,7 +632,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported on Windows and macOS.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -652,7 +652,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported on Windows and macOS.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -1087,7 +1087,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported on Windows and macOS.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 

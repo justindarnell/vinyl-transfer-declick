@@ -34,72 +34,75 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
             return;
         }
 
-        Stop();
-
-        _samples = buffer.Samples;
-        _channels = buffer.Channels;
-        _sampleRate = buffer.SampleRate;
-        _startFrame = Math.Clamp(startFrame, 0, buffer.FrameCount);
-        _sampleOffset = _startFrame * _channels;
-
-        var format = new AudioStreamBasicDescription
-        {
-            SampleRate = _sampleRate,
-            FormatID = AudioFormatLinearPcm,
-            FormatFlags = AudioFormatFlagIsFloat | AudioFormatFlagIsPacked,
-            BytesPerPacket = (uint)(sizeof(float) * _channels),
-            FramesPerPacket = 1,
-            BytesPerFrame = (uint)(sizeof(float) * _channels),
-            ChannelsPerFrame = (uint)_channels,
-            BitsPerChannel = sizeof(float) * 8,
-            Reserved = 0
-        };
-
-        _callback = HandleOutputBuffer;
-        _selfHandle = GCHandle.Alloc(this);
-
-        var status = AudioQueueNewOutput(
-            ref format,
-            _callback,
-            GCHandle.ToIntPtr(_selfHandle),
-            IntPtr.Zero,
-            IntPtr.Zero,
-            0,
-            out _audioQueue);
-
-        if (status != 0 || _audioQueue == IntPtr.Zero)
-        {
-            CleanupResources();
-            PlaybackStopped?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
-        var bufferByteSize = (uint)(FramesPerBuffer * sizeof(float) * _channels);
-        _buffers = new IntPtr[BufferCount];
-        var enqueuedAny = false;
-        for (var i = 0; i < BufferCount; i++)
-        {
-            status = AudioQueueAllocateBuffer(_audioQueue, bufferByteSize, out var bufferRef);
-            if (status != 0 || bufferRef == IntPtr.Zero)
-            {
-                break;
-            }
-
-            _buffers[i] = bufferRef;
-            if (FillAndEnqueue(bufferRef))
-            {
-                enqueuedAny = true;
-            }
-        }
-
-        if (!enqueuedAny)
+        lock (_sync)
         {
             Stop();
-            PlaybackStopped?.Invoke(this, EventArgs.Empty);
-            return;
-        }
 
-        AudioQueueStart(_audioQueue, IntPtr.Zero);
+            _samples = buffer.Samples;
+            _channels = buffer.Channels;
+            _sampleRate = buffer.SampleRate;
+            _startFrame = Math.Clamp(startFrame, 0, buffer.FrameCount);
+            _sampleOffset = _startFrame * _channels;
+
+            var format = new AudioStreamBasicDescription
+            {
+                SampleRate = _sampleRate,
+                FormatID = AudioFormatLinearPcm,
+                FormatFlags = AudioFormatFlagIsFloat | AudioFormatFlagIsPacked,
+                BytesPerPacket = (uint)(sizeof(float) * _channels),
+                FramesPerPacket = 1,
+                BytesPerFrame = (uint)(sizeof(float) * _channels),
+                ChannelsPerFrame = (uint)_channels,
+                BitsPerChannel = sizeof(float) * 8,
+                Reserved = 0
+            };
+
+            _callback = HandleOutputBuffer;
+            _selfHandle = GCHandle.Alloc(this);
+
+            var status = AudioQueueNewOutput(
+                ref format,
+                _callback,
+                GCHandle.ToIntPtr(_selfHandle),
+                IntPtr.Zero,
+                IntPtr.Zero,
+                0,
+                out _audioQueue);
+
+            if (status != 0 || _audioQueue == IntPtr.Zero)
+            {
+                CleanupResources();
+                PlaybackStopped?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            var bufferByteSize = (uint)(FramesPerBuffer * sizeof(float) * _channels);
+            _buffers = new IntPtr[BufferCount];
+            var enqueuedAny = false;
+            for (var i = 0; i < BufferCount; i++)
+            {
+                status = AudioQueueAllocateBuffer(_audioQueue, bufferByteSize, out var bufferRef);
+                if (status != 0 || bufferRef == IntPtr.Zero)
+                {
+                    break;
+                }
+
+                _buffers[i] = bufferRef;
+                if (FillAndEnqueue(bufferRef))
+                {
+                    enqueuedAny = true;
+                }
+            }
+
+            if (!enqueuedAny)
+            {
+                Stop();
+                PlaybackStopped?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            AudioQueueStart(_audioQueue, IntPtr.Zero);
+        }
     }
 
     public void Stop()
@@ -109,24 +112,27 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
 
     public long GetPositionFrames()
     {
-        if (_audioQueue == IntPtr.Zero)
+        lock (_sync)
         {
-            return 0;
+            if (_audioQueue == IntPtr.Zero)
+            {
+                return 0;
+            }
+
+            var status = AudioQueueGetCurrentTime(
+                _audioQueue,
+                IntPtr.Zero,
+                out var timeStamp,
+                out _);
+
+            if (status != 0)
+            {
+                return _startFrame;
+            }
+
+            var played = (long)Math.Max(0, timeStamp.SampleTime);
+            return _startFrame + played;
         }
-
-        var status = AudioQueueGetCurrentTime(
-            _audioQueue,
-            IntPtr.Zero,
-            out var timeStamp,
-            out _);
-
-        if (status != 0)
-        {
-            return _startFrame;
-        }
-
-        var played = (long)Math.Max(0, timeStamp.SampleTime);
-        return _startFrame + played;
     }
 
     public void Dispose()
@@ -186,13 +192,13 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
         if (samplesToCopy <= 0)
         {
             buffer.AudioDataByteSize = 0;
-            Marshal.StructureToPtr(buffer, bufferRef, false);
+            Marshal.StructureToPtr(buffer, bufferRef, true);
             return false;
         }
 
         Marshal.Copy(_samples, (int)_sampleOffset, buffer.AudioData, samplesToCopy);
         buffer.AudioDataByteSize = (uint)(samplesToCopy * sizeof(float));
-        Marshal.StructureToPtr(buffer, bufferRef, false);
+        Marshal.StructureToPtr(buffer, bufferRef, true);
         _sampleOffset += samplesToCopy;
 
         var status = AudioQueueEnqueueBuffer(_audioQueue, bufferRef, 0, IntPtr.Zero);
@@ -267,13 +273,27 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct SMPTETime
+    {
+        public short Subframes;          // SInt16 mSubframes
+        public short SubframeDivisor;    // SInt16 mSubframeDivisor
+        public uint Counter;             // UInt32 mCounter
+        public uint Type;                // UInt32 mType
+        public uint Flags;               // UInt32 mFlags
+        public short Hours;              // SInt16 mHours
+        public short Minutes;            // SInt16 mMinutes
+        public short Seconds;            // SInt16 mSeconds
+        public short Frames;             // SInt16 mFrames
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct AudioTimeStamp
     {
         public double SampleTime;
-        public long HostTime;
+        public ulong HostTime;
         public double RateScalar;
         public ulong WordClockTime;
-        public uint SMPTETime;
+        public SMPTETime SMPTETime;
         public uint Flags;
         public uint Reserved;
     }
