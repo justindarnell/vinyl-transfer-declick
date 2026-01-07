@@ -171,7 +171,7 @@ public sealed class SpectrogramView : Control
             {
                 var magnitude = magnitudes[x, y];
                 var magnitudeDb = 20f * MathF.Log10(MathF.Max(magnitude, 1e-6f) / maxMagnitude);
-                var normalized = MathF.Clamp((magnitudeDb - floorDb) / -floorDb, 0f, 1f);
+                var normalized = Math.Clamp((magnitudeDb - floorDb) / -floorDb, 0f, 1f);
                 normalized = MathF.Pow(normalized, gamma);
                 var rowOffset = y * stride;
                 var color = MapSpectrogramColor(normalized);
@@ -189,7 +189,7 @@ public sealed class SpectrogramView : Control
 
     private static (byte R, byte G, byte B) MapSpectrogramColor(float value)
     {
-        value = MathF.Clamp(value, 0f, 1f);
+        value = Math.Clamp(value, 0f, 1f);
         var stop1 = (R: 12f, G: 14f, B: 35f);
         var stop2 = (R: 20f, G: 60f, B: 160f);
         var stop3 = (R: 35f, G: 200f, B: 255f);
@@ -216,7 +216,7 @@ public sealed class SpectrogramView : Control
 
     private static (byte R, byte G, byte B) LerpColor((float R, float G, float B) from, (float R, float G, float B) to, float t)
     {
-        t = MathF.Clamp(t, 0f, 1f);
+        t = Math.Clamp(t, 0f, 1f);
         var r = from.R + (to.R - from.R) * t;
         var g = from.G + (to.G - from.G) * t;
         var b = from.B + (to.B - from.B) * t;
