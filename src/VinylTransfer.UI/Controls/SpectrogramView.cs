@@ -163,17 +163,21 @@ public sealed class SpectrogramView : Control
             }
         }
 
+        const float floorDb = -70f;
+        const float gamma = 0.85f;
         for (var x = 0; x < width; x++)
         {
             for (var y = 0; y < height; y++)
             {
                 var magnitude = magnitudes[x, y];
-                var intensity = (float)Math.Log10(1 + (9 * magnitude / maxMagnitude));
-                var color = (byte)Math.Clamp(intensity * 255f, 0f, 255f);
+                var magnitudeDb = 20f * MathF.Log10(MathF.Max(magnitude, 1e-6f) / maxMagnitude);
+                var normalized = MathF.Clamp((magnitudeDb - floorDb) / -floorDb, 0f, 1f);
+                normalized = MathF.Pow(normalized, gamma);
                 var rowOffset = y * stride;
-                pixelBuffer[rowOffset + (x * 4)] = color;
-                pixelBuffer[rowOffset + (x * 4) + 1] = (byte)Math.Clamp(color * 0.8f, 0f, 255f);
-                pixelBuffer[rowOffset + (x * 4) + 2] = (byte)Math.Clamp(color * 0.6f, 0f, 255f);
+                var color = MapSpectrogramColor(normalized);
+                pixelBuffer[rowOffset + (x * 4)] = color.B;
+                pixelBuffer[rowOffset + (x * 4) + 1] = color.G;
+                pixelBuffer[rowOffset + (x * 4) + 2] = color.R;
                 pixelBuffer[rowOffset + (x * 4) + 3] = 255;
             }
         }
@@ -181,6 +185,42 @@ public sealed class SpectrogramView : Control
         Marshal.Copy(pixelBuffer, 0, framebuffer.Address, pixelBuffer.Length);
 
         return bitmap;
+    }
+
+    private static (byte R, byte G, byte B) MapSpectrogramColor(float value)
+    {
+        value = MathF.Clamp(value, 0f, 1f);
+        var stop1 = (R: 12f, G: 14f, B: 35f);
+        var stop2 = (R: 20f, G: 60f, B: 160f);
+        var stop3 = (R: 35f, G: 200f, B: 255f);
+        var stop4 = (R: 255f, G: 210f, B: 90f);
+        var stop5 = (R: 255f, G: 255f, B: 255f);
+
+        if (value < 0.25f)
+        {
+            return LerpColor(stop1, stop2, value / 0.25f);
+        }
+
+        if (value < 0.5f)
+        {
+            return LerpColor(stop2, stop3, (value - 0.25f) / 0.25f);
+        }
+
+        if (value < 0.75f)
+        {
+            return LerpColor(stop3, stop4, (value - 0.5f) / 0.25f);
+        }
+
+        return LerpColor(stop4, stop5, (value - 0.75f) / 0.25f);
+    }
+
+    private static (byte R, byte G, byte B) LerpColor((float R, float G, float B) from, (float R, float G, float B) to, float t)
+    {
+        t = MathF.Clamp(t, 0f, 1f);
+        var r = from.R + (to.R - from.R) * t;
+        var g = from.G + (to.G - from.G) * t;
+        var b = from.B + (to.B - from.B) * t;
+        return ((byte)r, (byte)g, (byte)b);
     }
 
     private static int SelectFftSize(int frameCount, int sampleRate)
