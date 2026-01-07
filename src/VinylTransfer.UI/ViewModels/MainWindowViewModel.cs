@@ -73,6 +73,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private double _eventPreviewMs = 180;
     private bool _loopPreview;
     private int _loopRepeats = 3;
+    private bool _showSideBySide;
 
     public MainWindowViewModel()
     {
@@ -153,6 +154,22 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         get => _previewSourceLabel;
         private set => this.RaiseAndSetIfChanged(ref _previewSourceLabel, value);
     }
+
+    public bool ShowSideBySide
+    {
+        get => _showSideBySide;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _showSideBySide, value);
+            this.RaisePropertyChanged(nameof(ShowSingleView));
+        }
+    }
+
+    public bool ShowSingleView => !ShowSideBySide;
+
+    public AudioBuffer? OriginalBuffer => InputBuffer;
+
+    public AudioBuffer? CleanedBuffer => ProcessedBuffer;
 
     public ReactiveCommand<Unit, Unit> ExportProcessedCommand { get; }
 
@@ -489,6 +506,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _inputBuffer, value);
             this.RaisePropertyChanged(nameof(DisplayBuffer));
+            this.RaisePropertyChanged(nameof(OriginalBuffer));
             this.RaisePropertyChanged(nameof(ScrubTimecode));
         }
     }
@@ -500,6 +518,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _processedBuffer, value);
             this.RaisePropertyChanged(nameof(DisplayBuffer));
+            this.RaisePropertyChanged(nameof(CleanedBuffer));
             this.RaisePropertyChanged(nameof(ScrubTimecode));
         }
     }

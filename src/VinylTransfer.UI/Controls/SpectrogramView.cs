@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -11,6 +12,11 @@ namespace VinylTransfer.UI.Controls;
 
 public sealed class SpectrogramView : Control
 {
+    private static readonly Pen SelectionPen = new(new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), 1);
+    private static readonly IBrush SelectionFill = new SolidColorBrush(Color.FromArgb(48, 255, 255, 255));
+    private const double MaxZoom = 8d;
+    private const double MinSelectionRatio = 0.02d;
+
     public static readonly StyledProperty<AudioBuffer?> BufferProperty =
         AvaloniaProperty.Register<SpectrogramView, AudioBuffer?>(nameof(Buffer));
     public static readonly StyledProperty<double> ZoomFactorProperty =
@@ -23,6 +29,9 @@ public sealed class SpectrogramView : Control
     private AudioBuffer? _lastBuffer;
     private double _lastZoom;
     private double _lastOffset;
+    private bool _isSelecting;
+    private Point _selectionStart;
+    private Point _selectionEnd;
 
     public AudioBuffer? Buffer
     {
@@ -85,6 +94,110 @@ public sealed class SpectrogramView : Control
         {
             context.DrawImage(_bitmap, new Rect(_bitmap.Size), bounds);
         }
+
+        if (_isSelecting)
+        {
+            DrawSelection(context, bounds);
+        }
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (Buffer is null)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        _isSelecting = true;
+        _selectionStart = point;
+        _selectionEnd = point;
+        e.Pointer.Capture(this);
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (!_isSelecting)
+        {
+            return;
+        }
+
+        _selectionEnd = e.GetPosition(this);
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (!_isSelecting)
+        {
+            return;
+        }
+
+        _selectionEnd = e.GetPosition(this);
+        ApplySelectionZoom();
+        _isSelecting = false;
+        e.Pointer.Capture(null);
+        InvalidateVisual();
+    }
+
+    private void DrawSelection(DrawingContext context, Rect bounds)
+    {
+        var startX = Math.Min(_selectionStart.X, _selectionEnd.X);
+        var endX = Math.Max(_selectionStart.X, _selectionEnd.X);
+        var rect = new Rect(new Point(startX, bounds.Y), new Point(endX, bounds.Bottom));
+        context.FillRectangle(SelectionFill, rect);
+        context.DrawRectangle(SelectionPen, rect);
+    }
+
+    private void ApplySelectionZoom()
+    {
+        var buffer = Buffer;
+        if (buffer is null)
+        {
+            return;
+        }
+
+        var bounds = Bounds;
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return;
+        }
+
+        var startX = Math.Min(_selectionStart.X, _selectionEnd.X);
+        var endX = Math.Max(_selectionStart.X, _selectionEnd.X);
+        var width = Math.Max(1d, bounds.Width);
+        var startRatio = Math.Clamp((startX - bounds.X) / width, 0d, 1d);
+        var endRatio = Math.Clamp((endX - bounds.X) / width, 0d, 1d);
+        var selectionRatio = endRatio - startRatio;
+        if (selectionRatio < MinSelectionRatio)
+        {
+            return;
+        }
+
+        var frameCount = buffer.FrameCount;
+        if (frameCount <= 0)
+        {
+            return;
+        }
+
+        var zoomFactor = Math.Max(1d, ZoomFactor);
+        var visibleFrames = Math.Max(1, (int)Math.Round(frameCount / zoomFactor));
+        var maxStart = Math.Max(0, frameCount - visibleFrames);
+        var viewOffset = Math.Clamp(ViewOffset, 0d, 1d);
+        var startFrameWindow = (int)Math.Round(maxStart * viewOffset);
+
+        var selectionStartFrame = startFrameWindow + (int)Math.Round(visibleFrames * startRatio);
+        var newZoom = Math.Clamp(zoomFactor / selectionRatio, 1d, MaxZoom);
+        var newVisibleFrames = Math.Max(1, (int)Math.Round(frameCount / newZoom));
+        var newMaxStart = Math.Max(0, frameCount - newVisibleFrames);
+        var newOffset = newMaxStart == 0 ? 0d : selectionStartFrame / (double)newMaxStart;
+
+        ZoomFactor = newZoom;
+        ViewOffset = Math.Clamp(newOffset, 0d, 1d);
     }
 
     private static void DrawPlaceholder(DrawingContext context, Rect bounds)
