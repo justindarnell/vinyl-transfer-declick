@@ -61,17 +61,17 @@
                     ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />
             <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Switch between original and cleaned audio previews." />
-            <WrapPanel Orientation="Horizontal" Spacing="8">
-              <Button Content="Play Preview"
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Play Preview" Margin="0,0,8,8"
                       Command="{Binding PlayPreviewCommand}"
                       ToolTip.Tip="Play the currently selected preview audio." />
-              <Button Content="Play From Cursor"
+              <Button Content="Play From Cursor" Margin="0,0,8,8"
                       Command="{Binding PlayFromPositionCommand}"
                       ToolTip.Tip="Play from the scrub position on the timeline." />
-              <Button Content="Play Event"
+              <Button Content="Play Event" Margin="0,0,8,8"
                       Command="{Binding PlayEventCommand}"
                       ToolTip.Tip="Play a short preview around the selected event." />
-              <Button Content="Stop Playback"
+              <Button Content="Stop Playback" Margin="0,0,8,8"
                       Command="{Binding StopPreviewCommand}"
                       ToolTip.Tip="Stop audio playback." />
             </WrapPanel>
