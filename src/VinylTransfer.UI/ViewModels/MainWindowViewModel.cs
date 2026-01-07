@@ -6,6 +6,7 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using ReactiveUI;
 using VinylTransfer.Core;
 using VinylTransfer.Infrastructure;
@@ -614,7 +615,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -631,7 +632,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -651,7 +652,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -961,7 +962,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
                     await Task.Delay(delayMs, token);
                     if (!token.IsCancellationRequested)
                     {
-                        SaveSettings();
+                        Dispatcher.UIThread.Post(SaveSettings);
                     }
                 }
                 catch (TaskCanceledException)
@@ -1086,7 +1087,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         if (!_audioPlayer.IsSupported)
         {
-            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            StatusMessage = "Status: Audio preview is not available on this platform. It is currently supported only on Windows and macOS.";
             return;
         }
 
@@ -1157,6 +1158,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlaybackStopped(object? sender, EventArgs args)
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => HandlePlaybackStopped(sender, args));
+            return;
+        }
+
         IsPlaying = false;
         StopPlayback(updateStatus: true, stopDevice: false);
     }
