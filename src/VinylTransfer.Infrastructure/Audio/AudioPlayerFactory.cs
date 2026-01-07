@@ -13,7 +13,7 @@ public static class AudioPlayerFactory
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            return new ManagedBassAudioPlayer();
+            return new MacAudioQueuePlayer();
         }
 
         return new UnsupportedAudioPlayer();
