@@ -40,6 +40,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private readonly object _debounceLock = new();
     private System.Threading.CancellationTokenSource? _scrubSaveCts;
     private System.Threading.CancellationTokenSource? _eventIndexSaveCts;
+    private readonly DispatcherTimer _playbackTimer;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
     private string _previewSourceLabel = "Viewing: Original";
@@ -80,6 +81,11 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         _audioPlayer = AudioPlayerFactory.Create();
         _audioPlayer.PlaybackStopped += HandlePlaybackStopped;
+        _playbackTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(120)
+        };
+        _playbackTimer.Tick += HandlePlaybackTimerTick;
 
         var canProcess = this.WhenAnyValue(vm => vm.InputBuffer).Select(buffer => buffer is not null);
         var canExportProcessed = this.WhenAnyValue(vm => vm.ProcessedBuffer).Select(buffer => buffer is not null);
@@ -1116,6 +1122,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         _audioPlayer.Play(buffer, _playbackPosition);
         IsPlaying = true;
+        _playbackTimer.Start();
         StatusMessage = "Status: Playing preview audio.";
     }
 
@@ -1149,9 +1156,24 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         }
 
         IsPlaying = false;
+        _playbackTimer.Stop();
         if (updateStatus)
         {
             StatusMessage = "Status: Playback stopped.";
+        }
+    }
+
+    private void HandlePlaybackTimerTick(object? sender, EventArgs e)
+    {
+        if (!IsPlaying || !_audioPlayer.IsSupported)
+        {
+            return;
+        }
+
+        var framesPlayed = _audioPlayer.GetPositionFrames();
+        if (DisplayBuffer is not null && DisplayBuffer.FrameCount > 0)
+        {
+            ScrubPosition = Math.Clamp(framesPlayed / (double)DisplayBuffer.FrameCount, 0d, 1d);
         }
     }
 
@@ -1167,6 +1189,8 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _scrubSaveCts?.Dispose();
         _eventIndexSaveCts?.Cancel();
         _eventIndexSaveCts?.Dispose();
+        _playbackTimer.Stop();
+        _playbackTimer.Tick -= HandlePlaybackTimerTick;
         StopPlayback(updateStatus: false);
         _audioPlayer.PlaybackStopped -= HandlePlaybackStopped;
         _audioPlayer.Dispose();
