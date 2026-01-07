@@ -6,11 +6,11 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
-using NAudio.Wave;
 using ReactiveUI;
 using VinylTransfer.Core;
 using VinylTransfer.Infrastructure;
 using VinylTransfer.UI;
+using VinylTransfer.Infrastructure.Audio;
 
 namespace VinylTransfer.UI.ViewModels;
 
@@ -33,11 +33,9 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private string? _loadedPath;
     private bool _isPreviewingProcessed;
     private bool _suppressSettingsSave;
-    private WaveOutEvent? _outputDevice;
-    private BufferedWaveProvider? _bufferedProvider;
+    private readonly IAudioPlayer _audioPlayer;
     private bool _isPlaying;
     private long _playbackPosition;
-    private EventHandler<StoppedEventArgs>? _playbackStoppedHandler;
     private readonly object _debounceLock = new();
     private System.Threading.CancellationTokenSource? _scrubSaveCts;
     private System.Threading.CancellationTokenSource? _eventIndexSaveCts;
@@ -77,6 +75,9 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     {
         OpenFileInteraction = new Interaction<OpenFileDialog, string?>();
         SaveFileInteraction = new Interaction<SaveFileDialog, string?>();
+
+        _audioPlayer = AudioPlayerFactory.Create();
+        _audioPlayer.PlaybackStopped += HandlePlaybackStopped;
 
         var canProcess = this.WhenAnyValue(vm => vm.InputBuffer).Select(buffer => buffer is not null);
         var canExportProcessed = this.WhenAnyValue(vm => vm.ProcessedBuffer).Select(buffer => buffer is not null);
@@ -611,6 +612,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlayPreview()
     {
+        if (!_audioPlayer.IsSupported)
+        {
+            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            return;
+        }
+
         if (DisplayBuffer is null)
         {
             StatusMessage = "Status: Load audio before playing.";
@@ -622,6 +629,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlayFromPosition()
     {
+        if (!_audioPlayer.IsSupported)
+        {
+            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            return;
+        }
+
         if (DisplayBuffer is null)
         {
             StatusMessage = "Status: Load audio before playing.";
@@ -636,6 +649,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlayEventPreview()
     {
+        if (!_audioPlayer.IsSupported)
+        {
+            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            return;
+        }
+
         var buffer = DisplayBuffer;
         if (buffer is null)
         {
@@ -1065,6 +1084,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void StartPlayback(AudioBuffer buffer, bool resumeFromPosition)
     {
+        if (!_audioPlayer.IsSupported)
+        {
+            StatusMessage = "Status: Audio preview is currently supported only on Windows.";
+            return;
+        }
+
         if (buffer is null)
         {
             return;
@@ -1077,79 +1102,20 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             _playbackPosition = 0;
         }
 
-        var format = WaveFormat.CreateIeeeFloatWaveFormat(buffer.SampleRate, buffer.Channels);
-        _bufferedProvider = new BufferedWaveProvider(format)
-        {
-            DiscardOnBufferOverflow = true
-        };
-
-        // Stream audio in chunks to avoid allocating large byte arrays for entire buffer
-        const int chunkSizeInSamples = 4096;
-        long totalFrames = buffer.FrameCount;
-        int sampleSizeInBytes = sizeof(float);
-        var chunkBytes = new byte[chunkSizeInSamples * sampleSizeInBytes];
-
-        var startFrame = Math.Clamp(_playbackPosition, 0, totalFrames);
-        long sampleOffset = startFrame * buffer.Channels;
-        long totalSamples = buffer.Samples.Length;
-
-        while (sampleOffset < totalSamples)
-        {
-            int samplesThisChunk = (int)Math.Min(chunkSizeInSamples, totalSamples - sampleOffset);
-            int bytesThisChunk = samplesThisChunk * sampleSizeInBytes;
-
-            Buffer.BlockCopy(
-                buffer.Samples,
-                (int)(sampleOffset * sampleSizeInBytes),
-                chunkBytes,
-                0,
-                bytesThisChunk);
-
-            _bufferedProvider.AddSamples(chunkBytes, 0, bytesThisChunk);
-            sampleOffset += samplesThisChunk;
-        }
-
-        _outputDevice = new WaveOutEvent();
-        _playbackStoppedHandler = (_, _) =>
-        {
-            if (_outputDevice is null)
-            {
-                return;
-            }
-
-            IsPlaying = false;
-            StopPlayback(updateStatus: true, stopDevice: false);
-        };
-        _outputDevice.PlaybackStopped += _playbackStoppedHandler;
-        _outputDevice.Init(_bufferedProvider);
-        _outputDevice.Play();
+        _audioPlayer.Play(buffer, _playbackPosition);
         IsPlaying = true;
         StatusMessage = "Status: Playing preview audio.";
     }
 
     private void SavePlaybackPosition()
     {
-        if (_bufferedProvider is null || _outputDevice is null)
+        if (!_audioPlayer.IsSupported)
         {
             _playbackPosition = 0;
             return;
         }
 
-        // Calculate position based on the current time position
-        // Note: This is an approximation since NAudio doesn't provide exact sample position
-        var outputFormat = _outputDevice.OutputWaveFormat;
-        if (outputFormat is null)
-        {
-            _playbackPosition = 0;
-            return;
-        }
-
-        // GetPosition returns bytes played
-        var bytesPlayed = _outputDevice.GetPosition();
-        var bytesPerSample = sizeof(float) * outputFormat.Channels;
-        var samplesPlayed = bytesPlayed / bytesPerSample;
-        var framesPlayed = samplesPlayed / outputFormat.Channels;
-        
+        var framesPlayed = _audioPlayer.GetPositionFrames();
         _playbackPosition = framesPlayed;
         if (DisplayBuffer is not null && DisplayBuffer.FrameCount > 0)
         {
@@ -1159,33 +1125,17 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void StopPlayback(bool updateStatus, bool stopDevice = true)
     {
-        if (_outputDevice is null)
+        if (!_audioPlayer.IsSupported)
         {
             IsPlaying = false;
             return;
         }
 
-        if (_playbackStoppedHandler is not null)
+        if (stopDevice)
         {
-            _outputDevice.PlaybackStopped -= _playbackStoppedHandler;
-            _playbackStoppedHandler = null;
+            _audioPlayer.Stop();
         }
-        
-        if (stopDevice && _outputDevice.PlaybackState != NAudio.Wave.PlaybackState.Stopped)
-        {
-            try
-            {
-                _outputDevice.Stop();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Device already disposed, ignore
-            }
-        }
-        
-        _outputDevice.Dispose();
-        _outputDevice = null;
-        _bufferedProvider = null;
+
         IsPlaying = false;
         if (updateStatus)
         {
@@ -1200,7 +1150,15 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         _eventIndexSaveCts?.Cancel();
         _eventIndexSaveCts?.Dispose();
         StopPlayback(updateStatus: false);
+        _audioPlayer.PlaybackStopped -= HandlePlaybackStopped;
+        _audioPlayer.Dispose();
         _disposables.Dispose();
+    }
+
+    private void HandlePlaybackStopped(object? sender, EventArgs args)
+    {
+        IsPlaying = false;
+        StopPlayback(updateStatus: true, stopDevice: false);
     }
 
     private AudioBuffer BuildEventPreviewBuffer(AudioBuffer buffer, int eventFrame)
