@@ -6,6 +6,7 @@ using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using ReactiveUI;
 using VinylTransfer.Core;
 using VinylTransfer.Infrastructure;
@@ -1157,6 +1158,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
     private void HandlePlaybackStopped(object? sender, EventArgs args)
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => HandlePlaybackStopped(sender, args));
+            return;
+        }
+
         IsPlaying = false;
         StopPlayback(updateStatus: true, stopDevice: false);
     }
