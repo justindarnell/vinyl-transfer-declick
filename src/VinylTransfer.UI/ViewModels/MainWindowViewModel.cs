@@ -42,6 +42,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     private System.Threading.CancellationTokenSource? _eventIndexSaveCts;
 
     private string _statusMessage = "Status: Load a WAV file to begin. Diagnostics will appear here.";
+    private string _previewSourceLabel = "Viewing: Original";
     private double _clickThreshold = 0.4;
     private double _clickIntensity = 0.6;
     private double _popThreshold = 0.35;
@@ -118,6 +119,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
             .DisposeWith(_disposables);
 
         LoadSettings();
+        UpdatePreviewSourceLabel();
     }
 
     public Interaction<OpenFileDialog, string?> OpenFileInteraction { get; }
@@ -139,6 +141,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
     public ReactiveCommand<Unit, Unit> PlayEventCommand { get; }
 
     public ReactiveCommand<Unit, Unit> StopPreviewCommand { get; }
+
+    public string PreviewSourceLabel
+    {
+        get => _previewSourceLabel;
+        private set => this.RaiseAndSetIfChanged(ref _previewSourceLabel, value);
+    }
 
     public ReactiveCommand<Unit, Unit> ExportProcessedCommand { get; }
 
@@ -526,6 +534,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         DetectedEvents = Array.Empty<DetectedEvent>();
         NoiseProfile = AudioAnalysis.BuildNoiseProfile(buffer);
         _isPreviewingProcessed = false;
+        UpdatePreviewSourceLabel();
         ScrubPosition = 0;
 
         StatusMessage = $"Status: Loaded {Path.GetFileName(path)} · {buffer.SampleRate} Hz · {buffer.Channels} ch · {FormatDuration(buffer)}.";
@@ -551,6 +560,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         NoiseProfile = result.Artifacts.NoiseProfile;
         _isPreviewingProcessed = true;
         this.RaisePropertyChanged(nameof(DisplayBuffer));
+        UpdatePreviewSourceLabel();
 
         StatusMessage = $"Status: Cleaned audio in {result.Diagnostics.ProcessingTime.TotalMilliseconds:F0} ms · " +
                         $"Clicks: {result.Diagnostics.ClicksDetected} · Pops: {result.Diagnostics.PopsDetected} · " +
@@ -601,6 +611,7 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
 
         _isPreviewingProcessed = !_isPreviewingProcessed;
         this.RaisePropertyChanged(nameof(DisplayBuffer));
+        UpdatePreviewSourceLabel();
         var source = _isPreviewingProcessed ? "Processed" : "Original";
         StatusMessage = $"Status: Preview set to {source} audio.";
 
@@ -1066,10 +1077,10 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         StatusMessage = $"Status: Applied preset '{preset.Name}'.";
     }
 
-    private bool IsPlaying
+    public bool IsPlaying
     {
         get => _isPlaying;
-        set => this.RaiseAndSetIfChanged(ref _isPlaying, value);
+        private set => this.RaiseAndSetIfChanged(ref _isPlaying, value);
     }
 
     private void StartPlayback(bool resumeFromPosition = false)
@@ -1142,6 +1153,12 @@ public sealed class MainWindowViewModel : ReactiveObject, IDisposable
         {
             StatusMessage = "Status: Playback stopped.";
         }
+    }
+
+    private void UpdatePreviewSourceLabel()
+    {
+        var source = _isPreviewingProcessed ? "Processed" : "Original";
+        PreviewSourceLabel = $"Viewing: {source}";
     }
 
     public void Dispose()

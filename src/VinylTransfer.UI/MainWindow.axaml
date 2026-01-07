@@ -12,12 +12,14 @@
     <TextBlock Grid.ColumnSpan="2" FontSize="22" FontWeight="SemiBold"
                Text="Vinyl Transfer Cleanup" />
 
-    <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0">
+    <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,16,16,0"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
       <StackPanel Spacing="16">
         <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="1. Import" />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Load a WAV so it can be analyzed and cleaned." />
             <Button Content="Import WAV"
                     Command="{Binding ImportWavCommand}"
@@ -28,9 +30,9 @@
         <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="2. Analyze &amp; Tune" />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Get suggested settings or tweak the sliders below." />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Choose a preset to jump-start common vinyl profiles." />
             <ComboBox ItemsSource="{Binding PresetOptions}"
                       SelectedItem="{Binding SelectedPreset}"
@@ -39,12 +41,12 @@
             <Button Content="Recommend Settings"
                     Command="{Binding RecommendSettingsCommand}"
                     ToolTip.Tip="Scan the audio and suggest slider values." />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Analyze the recording and suggest cleanup settings." />
             <Button Content="Auto Clean"
                     Command="{Binding AutoCleanCommand}"
                     ToolTip.Tip="Run the cleanup pass using the current settings." />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Apply cleanup with the current settings." />
           </StackPanel>
         </Border>
@@ -52,14 +54,14 @@
         <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="3. Preview" />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Compare original vs. cleaned audio." />
             <Button Content="A/B Preview"
                     Command="{Binding PreviewCommand}"
                     ToolTip.Tip="Toggle the waveform between the original and cleaned versions." />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Switch between original and cleaned audio previews." />
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <WrapPanel Orientation="Horizontal" Spacing="8">
               <Button Content="Play Preview"
                       Command="{Binding PlayPreviewCommand}"
                       ToolTip.Tip="Play the currently selected preview audio." />
@@ -72,8 +74,8 @@
               <Button Content="Stop Playback"
                       Command="{Binding StopPreviewCommand}"
                       ToolTip.Tip="Stop audio playback." />
-            </StackPanel>
-            <TextBlock FontSize="12" Foreground="Gray"
+            </WrapPanel>
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Listen to the selected preview." />
             <TextBlock Text="Scrub Position" Margin="0,6,0,0" />
             <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -107,7 +109,7 @@
         <Border BorderBrush="#2D2D2D" BorderThickness="1" CornerRadius="6" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock FontWeight="SemiBold" Text="4. Export" />
-            <TextBlock FontSize="12" Foreground="Gray"
+            <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                        Text="Save the cleaned audio, or export the removed noise." />
             <Button Content="Export Processed WAV"
                     Command="{Binding ExportProcessedCommand}"
@@ -124,7 +126,7 @@
         <TextBlock FontWeight="SemiBold" Text="Manual Controls" Margin="0,8,0,0" />
 
         <TextBlock Text="Click Threshold" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Higher values focus on only the loudest clicks." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding ClickThreshold}"
@@ -134,7 +136,7 @@
         </Grid>
 
         <TextBlock Text="Click Intensity" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="How strongly detected clicks are smoothed out." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding ClickIntensity}"
@@ -144,7 +146,7 @@
         </Grid>
 
         <TextBlock Text="Pop Threshold" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Higher values focus on only the most obvious pops." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding PopThreshold}"
@@ -154,7 +156,7 @@
         </Grid>
 
         <TextBlock Text="Pop Intensity" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="How strongly detected pops are smoothed out." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding PopIntensity}"
@@ -164,7 +166,7 @@
         </Grid>
 
         <TextBlock Text="Noise Floor" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Estimate the quietest background level to reduce hiss." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="-90" Maximum="-20" Value="{Binding NoiseFloorDb}"
@@ -174,7 +176,7 @@
         </Grid>
 
         <TextBlock Text="Noise Reduction" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="How much quiet background noise to reduce." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding NoiseReductionAmount}"
@@ -183,7 +185,7 @@
                      Text="{Binding NoiseReductionAmount, StringFormat={}{0:0.00}}" />
         </Grid>
         <TextBlock Text="Spectral Masking" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Preserve musical detail by masking noise reduction under strong tones." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="0" Maximum="1" Value="{Binding SpectralMaskingStrength}"
@@ -193,28 +195,28 @@
         </Grid>
 
         <TextBlock Text="Median Repair" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Uses a median filter to smooth sudden clicks and pops." />
         <CheckBox Content="Enable median-based repair"
                   IsChecked="{Binding UseMedianRepair}"
                   ToolTip.Tip="Median repair is good at removing sharp spikes without dulling transients." />
 
         <TextBlock Text="Spectral Noise Reduction" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Reduce hiss by subtracting a noise profile in the frequency domain." />
         <CheckBox Content="Enable spectral noise reduction"
                   IsChecked="{Binding UseSpectralNoiseReduction}"
                   ToolTip.Tip="Spectral noise reduction is more effective for steady hiss." />
 
         <TextBlock Text="Multi-Band Transient Detection" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Use frequency bands to detect small ticks and clicks." />
         <CheckBox Content="Enable multi-band transient detection"
                   IsChecked="{Binding UseMultiBandTransientDetection}"
                   ToolTip.Tip="Helps catch subtle ticks that are missed by a single threshold." />
 
         <TextBlock Text="Decrackle Pass" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Smooth dense micro-impulses before click/pop repair." />
         <CheckBox Content="Enable decrackle pass"
                   IsChecked="{Binding UseDecrackle}"
@@ -227,14 +229,14 @@
         </Grid>
 
         <TextBlock Text="Band-Limited Repair" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Interpolate repaired samples using a band-limited kernel." />
         <CheckBox Content="Enable band-limited interpolation"
                   IsChecked="{Binding UseBandLimitedInterpolation}"
                   ToolTip.Tip="Uses band-limited interpolation to rebuild transients more naturally." />
 
         <TextBlock Text="Waveform Overlays" Margin="0,8,0,0" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Show detected events and noise profile overlays." />
         <CheckBox Content="Show click/pop markers"
                   IsChecked="{Binding ShowEventOverlay}"
@@ -265,7 +267,7 @@
         </Grid>
 
         <TextBlock Text="Timeline Zoom" Margin="0,8,0,0" />
-        <TextBlock FontSize="12" Foreground="Gray"
+        <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    Text="Zoom and pan the waveform/spectrogram for detailed inspection." />
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <Slider Minimum="1" Maximum="8" Value="{Binding ZoomFactor}"
@@ -283,7 +285,17 @@
     </ScrollViewer>
 
     <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*,Auto,*" ColumnDefinitions="*" Margin="0,16,0,0">
-      <TextBlock Text="Waveform" FontWeight="SemiBold" />
+      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="Waveform" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding PreviewSourceLabel}" Foreground="Gray" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="Stop"
+                Command="{Binding StopPreviewCommand}"
+                IsEnabled="{Binding IsPlaying}"
+                ToolTip.Tip="Stop audio playback." />
+      </Grid>
       <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="8">
         <controls:WaveformView Buffer="{Binding DisplayBuffer}"
                                DetectedEvents="{Binding DetectedEvents}"
