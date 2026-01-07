@@ -278,7 +278,9 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
         public uint Reserved;
     }
 
-    [DllImport("AudioToolbox")]
+    private const string AudioToolboxLibrary = "/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox";
+
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueNewOutput(
         ref AudioStreamBasicDescription format,
         AudioQueueOutputCallback callback,
@@ -288,35 +290,35 @@ public sealed class MacAudioQueuePlayer : IAudioPlayer
         uint flags,
         out IntPtr audioQueue);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueAllocateBuffer(
         IntPtr audioQueue,
         uint bufferByteSize,
         out IntPtr buffer);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueEnqueueBuffer(
         IntPtr audioQueue,
         IntPtr buffer,
         uint numPacketDescs,
         IntPtr packetDescs);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueStart(
         IntPtr audioQueue,
         IntPtr startTime);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueStop(
         IntPtr audioQueue,
         bool immediate);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueDispose(
         IntPtr audioQueue,
         bool immediate);
 
-    [DllImport("AudioToolbox")]
+    [DllImport(AudioToolboxLibrary)]
     private static extern int AudioQueueGetCurrentTime(
         IntPtr audioQueue,
         IntPtr timeline,
